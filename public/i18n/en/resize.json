@@ -1,0 +1,8 @@
+{
+  "resize.target.side": "project panel",
+  "resize.target.rail": "chat list",
+  "resize.target.files": "Files panel",
+  "resize.target.fxtree": "folder tree",
+  "resize.handleTip": "Drag to resize the {target} · double-click to reset",
+  "resize.reset": "Reset the {target} to its default width"
+}

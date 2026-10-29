@@ -1,0 +1,6 @@
+data/
+hub.log
+data.log
+hub.config.json
+.claude/
+node_modules/

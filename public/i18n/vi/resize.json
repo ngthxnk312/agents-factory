@@ -1,0 +1,8 @@
+{
+  "resize.target.side": "cột project",
+  "resize.target.rail": "danh sách chat",
+  "resize.target.files": "cột File",
+  "resize.target.fxtree": "cây thư mục",
+  "resize.handleTip": "Kéo để đổi độ rộng {target} · nhấn đúp để về mặc định",
+  "resize.reset": "Đã đưa {target} về độ rộng mặc định"
+}

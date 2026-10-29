@@ -1,0 +1,21 @@
+{
+  "handoff.title": "Switch to another agent",
+  "handoff.close": "Close",
+  "handoff.explain": "A {from} session can't be moved to another CLI directly. The Hub opens a new chat with the agent you pick, in the same project, and hands over the context: the original request, task list, files changed and the recent conversation. This chat stays as it is.",
+  "handoff.target": "Switch to",
+  "handoff.model": "Model",
+  "handoff.mode": "Mode",
+  "handoff.note": "Next step for the new agent (optional)",
+  "handoff.notePlaceholder": "e.g. Finish the tests and fix the remaining build error",
+  "handoff.foot": "The new agent reads the brief and summarises where things stand before continuing",
+  "handoff.cancel": "Cancel",
+  "handoff.submit": "Switch agent",
+  "handoff.defaultModel": "Agent's default model",
+  "handoff.done": "Switched to {agent} — the new chat is open",
+  "handoff.noAgents": "No other agent is installed on this machine",
+  "handoff.button": "Switch agent",
+  "handoff.buttonTip": "Move this chat to another agent (Claude ↔ Antigravity ↔ Codex ↔ Gemini) with a context handoff",
+  "handoff.busy": "The agent is running — stop it or wait before switching",
+  "handoff.from": "Continued from the {agent} chat",
+  "handoff.to": "Moved to {agent}"
+}

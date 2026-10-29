@@ -1,0 +1,55 @@
+{
+  "_doc": "Copy this file to hub.config.json and adjust it for this machine. Remove a key to use its default. Environment variables (PORT, HUB_DATA, CLAUDE_BIN, CLAUDE_CONFIG_DIR, …) take precedence over this file.",
+  "user": {
+    "name": "Your Name",
+    "avatar": "🧑‍💻"
+  },
+  "port": 7420,
+  "host": "127.0.0.1",
+  "maxParallel": 4,
+  "idleMinutes": 15,
+  "dataDir": "./data",
+  "claudeConfigDir": "~/.claude",
+  "terminal": [
+    "gnome-terminal",
+    "--working-directory",
+    "{cwd}",
+    "--",
+    "bash",
+    "-lc",
+    "{cmd}; exec bash"
+  ],
+  "skillsDirs": [],
+  "_doc_skillsDirs": "Extra folders of fallback SKILL.md skills (lowest priority: project and machine skills always win).",
+  "agents": {
+    "claude": {
+      "bin": "claude"
+    },
+    "agy": {
+      "bin": "agy"
+    },
+    "codex": {
+      "bin": "codex",
+      "models": [
+        [
+          "gpt-5-codex",
+          "GPT-5 Codex"
+        ]
+      ]
+    },
+    "gemini": {
+      "bin": "gemini"
+    },
+    "_example_custom_agent": {
+      "enabled": false,
+      "label": "Aider",
+      "icon": "◆",
+      "bin": "aider",
+      "args": [
+        "--yes-always",
+        "--message",
+        "{prompt}"
+      ]
+    }
+  }
+}

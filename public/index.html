@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agents Factory</title>
+  <script>try { const t = localStorage.getItem('hub-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>
+  <link rel="icon" type="image/svg+xml" href="/img/logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button type="button" class="brand" data-home data-i18n-attr="title:index.topbar.homeTip">
+      <div class="logo" data-noicon><img src="/img/logo.svg" alt="" width="40" height="40"></div>
+      <div>
+        <div class="brand-name">Agents Factory</div>
+        <div class="brand-sub" id="cliVersion" data-i18n="index.topbar.loadingConfig"></div>
+      </div>
+    </button>
+    <button class="ws-btn" id="wsBtn" aria-haspopup="menu" aria-expanded="false" data-i18n-attr="title:index.topbar.workspaceTip"></button>
+    <button class="rl-box" id="rlBox" data-tab="usage" data-i18n-attr="aria-label:index.topbar.usageLimitsLabel"></button>
+    <div class="stats" id="stats"></div>
+    <div class="theme-switch" id="themeSwitch" data-i18n-attr="title:index.theme.title">
+      <button data-theme-set="auto" data-i18n-attr="title:index.theme.auto">💻</button>
+      <button data-theme-set="light" data-i18n-attr="title:index.theme.light">☀️</button>
+      <button data-theme-set="dark" data-i18n-attr="title:index.theme.dark">🌙</button>
+    </div>
+    <button class="icon-btn" id="btnFiles" data-i18n-attr="title:index.topbar.filesTip;aria-label:index.topbar.filesLabel"></button>
+    <button class="btn primary" id="btnCompose"><span data-i18n="index.topbar.compose"></span> <kbd>N</kbd></button>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="side-head">
+        <input id="projectSearch" class="input" data-i18n-attr="placeholder:index.sidebar.search">
+        <button class="icon-btn" id="btnAddProject" data-i18n-attr="title:index.sidebar.addProjectTip">＋</button>
+        <button class="icon-btn" id="btnDensity" data-i18n-attr="title:index.sidebar.compactTip">☰</button>
+        <button class="icon-btn" id="btnSide" data-i18n-attr="title:index.sidebar.collapseTip">«</button>
+      </div>
+      <button class="proj all active" data-path="" data-i18n-attr="title:index.sidebar.allProjectsTip">
+        <span class="proj-av all-av" aria-hidden="true">🌈</span>
+        <span class="proj-name" data-i18n="index.sidebar.allProjects"></span>
+        <span class="proj-count" id="allCount"></span>
+      </button>
+      <div id="projectList" class="proj-list"></div>
+      <div class="side-foot" id="userCfg"></div>
+    </aside>
+
+    <main class="main">
+      <nav class="tabs" id="tabs">
+        <button data-tab="dashboard" class="active" data-i18n="index.tabs.dashboard"></button>
+        <button data-tab="board" data-i18n="index.tabs.board"></button>
+        <button data-tab="sessions" data-i18n="index.tabs.sessions"></button>
+        <button data-tab="usage" data-i18n="index.tabs.usage"></button>
+        <button data-tab="config" data-i18n="index.tabs.config"></button>
+        <button data-tab="plugins" data-i18n="index.tabs.plugins"></button>
+        <button data-tab="mcp" data-i18n="index.tabs.mcp"></button>
+      </nav>
+      <section id="view" class="view"></section>
+    </main>
+
+    <!-- Chat window -->
+    <section class="chat" id="chat" hidden></section>
+
+    <!-- File panel: directory tree + file editing -->
+    <aside class="files" id="files" data-i18n-attr="aria-label:index.files.label"></aside>
+  </div>
+
+  <!-- New task -->
+  <div class="overlay" id="composeOverlay" hidden>
+    <form class="modal" id="composeForm">
+      <div class="dropzone" id="composeDrop" hidden data-i18n="index.compose.dropHere"></div>
+      <div class="modal-head">
+        <h2 data-i18n="index.compose.title"></h2>
+        <button type="button" class="icon-btn" data-close data-i18n-attr="aria-label:index.compose.close">✕</button>
+      </div>
+      <div class="field">
+        <span><span data-i18n="index.compose.agent"></span> <small data-i18n="index.compose.agentHint"></small></span>
+        <div class="chips" id="agentPicker"></div>
+      </div>
+      <div class="field">
+        <span><span data-i18n="index.compose.skill"></span> <small data-i18n="index.compose.skillHint"></small></span>
+        <div class="chips" id="skillPicker"></div>
+      </div>
+      <label class="field">
+        <span><span data-i18n="index.compose.projects"></span> <small data-i18n="index.compose.projectsHint"></small></span>
+        <div class="chips" id="projectPicker"></div>
+      </label>
+      <label class="field">
+        <span data-i18n="index.compose.prompt"></span>
+        <textarea id="prompt" rows="7" data-i18n-attr="placeholder:index.compose.promptPlaceholder"></textarea>
+      </label>
+      <div class="drop-hint">
+        <span data-i18n="index.compose.dropHint"></span>
+        <button type="button" class="btn sm ghost" data-pickfile="compose" data-i18n="index.compose.pickFile"></button>
+        <div class="attach-row" id="composeAtt"></div>
+      </div>
+      <div class="grid3">
+        <label class="field"><span data-i18n="index.compose.model"></span>
+          <select id="model">
+            <option value="" data-i18n="index.compose.modelProject"></option>
+            <option value="opus">Opus</option>
+            <option value="opus[1m]" data-i18n="index.compose.modelOpus1m"></option>
+            <option value="sonnet">Sonnet</option>
+            <option value="haiku" data-i18n="index.compose.modelHaiku"></option>
+            <option value="fable">Fable</option>
+          </select>
+        </label>
+        <label class="field"><span><span data-i18n="index.compose.mode"></span> <small data-i18n="index.compose.modeHint"></small></span>
+          <select id="permissionMode">
+            <option value="" data-i18n="index.compose.modeDefault"></option>
+            <option value="acceptEdits" data-i18n="index.compose.modeAcceptEdits"></option>
+            <option value="plan" data-i18n="index.compose.modePlan"></option>
+            <option value="auto" selected data-i18n="index.compose.modeAuto"></option>
+            <option value="bypassPermissions" data-i18n="index.compose.modeBypass"></option>
+          </select>
+        </label>
+        <label class="field"><span data-i18n="index.compose.effort"></span>
+          <select id="effort">
+            <option value="" data-i18n="index.compose.effortDefault"></option>
+            <option value="low" data-i18n="index.compose.effortLow"></option>
+            <option value="medium" data-i18n="index.compose.effortMedium"></option>
+            <option value="high" data-i18n="index.compose.effortHigh"></option>
+            <option value="xhigh" data-i18n="index.compose.effortXhigh"></option>
+            <option value="max" data-i18n="index.compose.effortMax"></option>
+          </select>
+        </label>
+      </div>
+      <details class="field more">
+        <summary><span data-i18n="index.compose.pluginsSummary"></span> <small id="pluginPickCount"></small></summary>
+        <p class="hint"><span data-i18n="index.compose.pluginsHintBefore"></span><code>--plugin-dir</code><span data-i18n="index.compose.pluginsHintAfter"></span></p>
+        <div class="chips" id="pluginPicker"></div>
+      </details>
+      <details class="field more">
+        <summary data-i18n="index.compose.systemPrompt"></summary>
+        <textarea id="appendSystemPrompt" rows="3" data-i18n-attr="placeholder:index.compose.systemPromptPlaceholder"></textarea>
+      </details>
+      <div class="modal-foot">
+        <span class="hint" data-i18n="index.compose.submitHint"></span>
+        <button type="button" class="btn ghost" data-close data-i18n="index.compose.cancel"></button>
+        <button type="submit" class="btn primary" id="btnSubmit" data-i18n="index.compose.submit"></button>
+      </div>
+    </form>
+  </div>
+
+  <input type="file" id="filePicker" multiple hidden>
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+  <script src="/icons.js"></script>
+  <script src="/i18n.js"></script>
+  <script src="/ui.js"></script>
+  <script src="/files.js"></script>
+  <script src="/slash.js"></script>
+  <script src="/nav.js"></script>
+  <script src="/app.js"></script>
+  <script src="/dashboard.js"></script>
+  <script src="/handoff.js"></script>
+  <script src="/bgview.js"></script>
+  <script src="/resize.js"></script>
+</body>
+</html>

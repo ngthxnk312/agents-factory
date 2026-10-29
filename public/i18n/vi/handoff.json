@@ -1,0 +1,21 @@
+{
+  "handoff.title": "Chuyển sang agent khác",
+  "handoff.close": "Đóng",
+  "handoff.explain": "Phiên của {from} không chuyển thẳng sang CLI khác được. Hub sẽ mở chat mới với agent bạn chọn trong cùng project và bàn giao ngữ cảnh: yêu cầu gốc, danh sách việc, file đã sửa và các trao đổi gần đây. Chat cũ vẫn giữ nguyên.",
+  "handoff.target": "Chuyển sang",
+  "handoff.model": "Model",
+  "handoff.mode": "Chế độ",
+  "handoff.note": "Việc tiếp theo cho agent mới (tuỳ chọn)",
+  "handoff.notePlaceholder": "VD: Làm tiếp phần test và sửa lỗi build còn lại",
+  "handoff.foot": "Agent mới đọc bản bàn giao rồi tự tóm tắt tình hình trước khi làm tiếp",
+  "handoff.cancel": "Huỷ",
+  "handoff.submit": "Chuyển agent",
+  "handoff.defaultModel": "Model mặc định của agent",
+  "handoff.done": "Đã chuyển sang {agent} — chat mới đã mở",
+  "handoff.noAgents": "Chưa có agent nào khác được cài trên máy",
+  "handoff.button": "Đổi agent",
+  "handoff.buttonTip": "Chuyển cuộc chat này sang agent khác (Claude ↔ Antigravity ↔ Codex ↔ Gemini) kèm bàn giao ngữ cảnh",
+  "handoff.busy": "Agent đang chạy — dừng hoặc đợi xong rồi hãy đổi agent",
+  "handoff.from": "Tiếp nối từ chat {agent}",
+  "handoff.to": "Đã chuyển sang {agent}"
+}

@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# Reject commit messages that carry co-author trailers or AI/tool attribution (see AGENTS.md → Git workflow).
+# Enable once per clone:  git config core.hooksPath .githooks
+msg_file="$1"
+if grep -qiE '^(co-authored-by|signed-off-by: *(claude|chatgpt|copilot|gemini|ai))|generated (with|by) |noreply@anthropic\.com|🤖' "$msg_file"; then
+  echo "commit-msg: attribution trailers / AI markers are not allowed in commit messages (AGENTS.md → Git workflow)." >&2
+  grep -niE '^(co-authored-by|signed-off-by)|generated (with|by) |noreply@anthropic\.com|🤖' "$msg_file" >&2
+  exit 1
+fi

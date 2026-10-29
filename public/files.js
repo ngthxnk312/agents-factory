@@ -84,6 +84,7 @@ function renderFiles() {
   $('#fxFilter').oninput = e => { fx.filter = e.target.value; drawTree(); };
   drawTree();
   drawEditor();
+  if (typeof ensureHandles === 'function') ensureHandles();
 }
 function fxIconHtml(name, cls) { return `<svg class="svg-i${cls ? ' ' + cls : ''}" aria-hidden="true"><use href="#i-${name}"/></svg>`; }
 
@@ -117,8 +118,8 @@ function drawTree(errMsg) {
       if (q && !e.name.toLowerCase().includes(q) && !(e.dir && fx.dirs.has(rel) && hasMatch(rel))) continue;
       const open = e.dir && (fx.open.has(rel) || (q && fx.dirs.has(rel)));
       const sel = fx.file && fx.file.path === rel;
-      rows.push(`<div class="fx-row ${e.dir ? 'dir' : 'file'} ${sel ? 'sel' : ''} ${e.name.startsWith('.') ? 'fx-hid' : ''}" role="treeitem" tabindex="-1"
-        ${e.dir ? `data-fxdir="${esc(rel)}" aria-expanded="${open ? 'true' : 'false'}"` : `data-fxfile="${esc(rel)}"`} style="--d:${depth}" title="${esc(rel)}${e.dir ? '' : ' · ' + fmtSize(e.size)}">
+      rows.push(`<div class="fx-row ${e.dir ? 'dir' : 'file'} ${sel ? 'sel' : ''} ${e.name.startsWith('.') ? 'fx-hid' : ''}" role="treeitem" tabindex="-1" draggable="true"
+        ${e.dir ? `data-fxdir="${esc(rel)}" aria-expanded="${open ? 'true' : 'false'}"` : `data-fxfile="${esc(rel)}"`} style="--d:${depth}" title="${esc(rel)}${e.dir ? '' : ' · ' + fmtSize(e.size)} · ${esc(t('files.tree.dragTip'))}">
         <span class="fx-caret">${e.dir ? fxIconHtml('chevron-right') : ''}</span>
         ${e.dir ? fxIconHtml(open ? 'folder-open' : 'folder', 'c-sky') : fileIcon(e.name)}
         <span class="fx-name">${esc(e.name)}</span>${e.link ? '<span class="fx-link">↪</span>' : ''}
@@ -288,16 +289,90 @@ async function refreshFilesAll() {
   drawTree();
 }
 
-function fileToChat() {
-  const f = fx.file;
-  if (!f) return;
+function fxRef(rel, isDir) {
   const task = state.openTask && state.tasks.get(state.openTask);
-  const ref = task && task.projectPath === fx.root ? '@' + f.path : fx.root.replace(/\/$/, '') + '/' + f.path;
-  const ta = $('#followText');
-  if (!ta) { navigator.clipboard && navigator.clipboard.writeText(ref).catch(() => {}); return toast(t('files.toChat.copied', { ref }), 'info'); }
+  const composeOpen = $('#composeOverlay') && !$('#composeOverlay').hidden;
+  const sameProj = composeOpen
+    ? $$('#projectChips .chip.on').some(b => b.dataset.proj === fx.root)
+    : !!(task && task.projectPath === fx.root);
+  const suffix = isDir && !rel.endsWith('/') ? '/' : '';
+  return (sameProj ? '@' + rel : fx.root.replace(/\/$/, '') + '/' + rel) + suffix;
+}
+function insertRefToInput(ta, ref) {
+  if (!ta) return false;
   ta.setRangeText((ta.value && !/\s$/.test(ta.value) ? ' ' : '') + ref + ' ', ta.selectionStart, ta.selectionEnd, 'end');
   ta.focus();
-  autoGrow(ta);
+  if (typeof autoGrow === 'function') autoGrow(ta);
+  return true;
+}
+function fileToChat(rel, isDir) {
+  const p = rel || (fx.file && fx.file.path);
+  if (!p) return;
+  const ref = fxRef(p, isDir);
+  const composeOpen = $('#composeOverlay') && !$('#composeOverlay').hidden;
+  const ta = composeOpen ? $('#prompt') : $('#followText');
+  if (!insertRefToInput(ta, ref)) {
+    navigator.clipboard && navigator.clipboard.writeText(ref).catch(() => {});
+    return toast(t('files.toChat.copied', { ref }), 'info');
+  }
+}
+
+const fxParentDir = rel => (rel && rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '');
+function fxCanMove(fromRel, isDir, toDir) {
+  if (!fromRel || toDir === null || toDir === undefined) return false;
+  if (fxParentDir(fromRel) === toDir) return false;
+  if (isDir && (toDir === fromRel || toDir.startsWith(fromRel + '/'))) return false;
+  return true;
+}
+async function moveEntry(fromRel, toDir) {
+  if (!fx.root || !fxCanMove(fromRel, fx.drag && fx.drag.dir, toDir)) return;
+  const res = await fetch('/api/fs/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Lang': i18n.lang },
+    body: JSON.stringify({ root: fx.root, from: fromRel, toDir }),
+  });
+  const r = await res.json().catch(() => ({}));
+  if (!res.ok) return toast(r.error || t('files.tree.moveFailed'), true);
+  if (toDir) fx.open.add(toDir);
+  for (const d of [...fx.open]) {
+    if (d === fromRel) { fx.open.delete(d); fx.open.add(r.path); }
+    else if (d.startsWith(fromRel + '/')) { fx.open.delete(d); fx.open.add(r.path + d.slice(fromRel.length)); }
+  }
+  if (fx.file) {
+    if (fx.file.path === fromRel) { fx.file.path = r.path; drawEditorKeep(); }
+    else if (fx.file.path.startsWith(fromRel + '/')) { fx.file.path = r.path + fx.file.path.slice(fromRel.length); drawEditorKeep(); }
+  }
+  await refreshFilesAll();
+  toast(t('files.tree.moved', { path: r.path }), 'ok');
+}
+async function uploadFilesToDir(files, toDir) {
+  if (!fx.root || !files.length) return;
+  const dir = toDir || '';
+  let lastRel = '';
+  for (const file of files) {
+    try {
+      const q = `root=${encodeURIComponent(fx.root)}&dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(file.name)}`;
+      let res = await fetch('/api/fs/upload?' + q, { method: 'POST', headers: { 'X-Lang': i18n.lang }, body: file });
+      if (res.status === 404 && file.size <= 3 * 1024 * 1024) {
+        const text = await file.text();
+        const rel = dir ? dir + '/' + file.name : file.name;
+        res = await fetch('/api/fs/write', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Lang': i18n.lang },
+          body: JSON.stringify({ root: fx.root, path: rel, text, create: true }),
+        });
+      }
+      const r = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(r.error || t('files.tree.uploadFailed'));
+      lastRel = r.path || (dir ? dir + '/' + file.name : file.name);
+      toast(t('files.tree.uploaded', { name: file.name, dir: dir || projName(fx.root) }), 'ok');
+    } catch (err) {
+      toast(err.message || t('files.tree.uploadFailed'), true);
+    }
+  }
+  if (dir) fx.open.add(dir);
+  await refreshFilesAll();
+  if (files.length === 1 && lastRel) openFile(lastRel);
 }
 
 function toggleFiles(force) {
@@ -316,6 +391,138 @@ function filesBtn() {
   b.classList.toggle('on', layout.files !== 'off');
   setTip(b, layout.files === 'off' ? t('files.panel.openTip') : t('files.panel.collapseTip'));
 }
+
+// ---------- drag & drop (move in tree, drop into chat/compose, drop OS files into folder) ----------
+let fxHoverDir = null, fxHoverTimer = 0, fxDropClearTimer = 0;
+function clearFxDropCues() {
+  clearTimeout(fxHoverTimer);
+  fxHoverDir = null;
+  $$('.fx-drop-target, .fx-drop-root').forEach(el => el.classList.remove('fx-drop-target', 'fx-drop-root'));
+}
+function fxTargetDirFromEvent(e) {
+  const dirRow = e.target.closest && e.target.closest('[data-fxdir]');
+  if (dirRow) return { dir: dirRow.dataset.fxdir, row: dirRow };
+  const fileRow = e.target.closest && e.target.closest('[data-fxfile]');
+  if (fileRow) {
+    const dir = fxParentDir(fileRow.dataset.fxfile);
+    const parentRow = dir ? $(`#fxList [data-fxdir="${CSS.escape(dir)}"]`) : null;
+    return { dir, row: parentRow };
+  }
+  if (e.target.closest && e.target.closest('#fxList, .fx-tree')) return { dir: '', row: null };
+  return null;
+}
+document.addEventListener('dragstart', e => {
+  const row = e.target.closest && e.target.closest('.fx-row[data-fxdir], .fx-row[data-fxfile]');
+  if (!row) return;
+  const isDir = row.dataset.fxdir !== undefined;
+  const rel = isDir ? row.dataset.fxdir : row.dataset.fxfile;
+  fx.drag = { root: fx.root, path: rel, dir: isDir };
+  row.classList.add('dragging');
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'copyMove';
+    e.dataTransfer.setData('text/plain', fxRef(rel, isDir));
+    e.dataTransfer.setData('application/x-hub-fx', JSON.stringify(fx.drag));
+  }
+});
+document.addEventListener('dragend', () => {
+  fx.drag = null;
+  $$('.fx-row.dragging').forEach(el => el.classList.remove('dragging'));
+  clearFxDropCues();
+});
+document.addEventListener('dragover', e => {
+  if (!e.dataTransfer) return;
+  const types = [...e.dataTransfer.types];
+  const isInternal = !!(fx.drag || types.includes('application/x-hub-fx'));
+  const isOsFiles = !isInternal && types.includes('Files');
+  if (!isInternal && !isOsFiles) return;
+
+  const inFiles = e.target.closest && e.target.closest('#files');
+  if (inFiles && fx.root) {
+    const tgt = fxTargetDirFromEvent(e);
+    if (!tgt) return;
+    if (isInternal && fx.drag && (fx.drag.root !== fx.root || !fxCanMove(fx.drag.path, fx.drag.dir, tgt.dir))) {
+      clearFxDropCues();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = isInternal ? 'move' : 'copy';
+    $$('.fx-drop-target, .fx-drop-root').forEach(el => el.classList.remove('fx-drop-target', 'fx-drop-root'));
+    if (tgt.row) tgt.row.classList.add('fx-drop-target');
+    else if ($('#fxList')) $('#fxList').classList.add('fx-drop-root');
+    if (tgt.row && tgt.dir && !fx.open.has(tgt.dir) && fxHoverDir !== tgt.dir) {
+      clearTimeout(fxHoverTimer);
+      fxHoverDir = tgt.dir;
+      fxHoverTimer = setTimeout(() => {
+        fx.open.add(tgt.dir);
+        if (!fx.dirs.has(tgt.dir)) loadDir(tgt.dir);
+        drawTree();
+      }, 550);
+    }
+    clearTimeout(fxDropClearTimer);
+    fxDropClearTimer = setTimeout(clearFxDropCues, 180);
+    return;
+  }
+
+  if (isInternal) {
+    const composeOpen = $('#composeOverlay') && !$('#composeOverlay').hidden;
+    const inCompose = composeOpen && e.target.closest && e.target.closest('#composeOverlay .modal');
+    const inChat = !composeOpen && state.openTask && e.target.closest && e.target.closest('#chat');
+    if (inCompose || inChat) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      clearFxDropCues();
+      const box = inCompose ? $('#prompt') : $('#followForm');
+      if (box) box.classList.add('fx-drop-target');
+      clearTimeout(fxDropClearTimer);
+      fxDropClearTimer = setTimeout(clearFxDropCues, 180);
+    }
+  }
+});
+document.addEventListener('drop', async e => {
+  if (!e.dataTransfer) return;
+  const types = [...e.dataTransfer.types];
+  const isInternal = !!(fx.drag || types.includes('application/x-hub-fx'));
+  const isOsFiles = !isInternal && e.dataTransfer.files && e.dataTransfer.files.length > 0;
+  if (!isInternal && !isOsFiles) return;
+
+  const inFiles = e.target.closest && e.target.closest('#files');
+  if (inFiles && fx.root) {
+    const tgt = fxTargetDirFromEvent(e);
+    clearFxDropCues();
+    if (!tgt) return;
+    if (isInternal) {
+      let item = fx.drag;
+      if (!item) { try { item = JSON.parse(e.dataTransfer.getData('application/x-hub-fx')); } catch { /* ignore */ } }
+      if (!item || item.root !== fx.root || !fxCanMove(item.path, item.dir, tgt.dir)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      await moveEntry(item.path, tgt.dir);
+      return;
+    }
+    if (isOsFiles) {
+      e.preventDefault();
+      e.stopPropagation();
+      await uploadFilesToDir([...e.dataTransfer.files], tgt.dir);
+      return;
+    }
+  }
+
+  if (isInternal) {
+    clearFxDropCues();
+    let item = fx.drag;
+    if (!item) { try { item = JSON.parse(e.dataTransfer.getData('application/x-hub-fx')); } catch { /* ignore */ } }
+    if (!item) return;
+    const composeOpen = $('#composeOverlay') && !$('#composeOverlay').hidden;
+    const inCompose = composeOpen && e.target.closest && e.target.closest('#composeOverlay .modal');
+    const inChat = !composeOpen && state.openTask && e.target.closest && e.target.closest('#chat');
+    if (inCompose || inChat) {
+      e.preventDefault();
+      e.stopPropagation();
+      fileToChat(item.path, item.dir);
+    }
+  }
+});
 
 // ---------- events ----------
 document.addEventListener('click', async e => {

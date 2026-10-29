@@ -52,6 +52,8 @@ const FAMILIES = [
   { key: 'Sonnet', color: 'var(--s-sonnet)' },
   { key: 'Haiku', color: 'var(--s-haiku)' },
   { key: 'Fable', color: 'var(--s-fable)' },
+  { key: 'Gemini', color: 'var(--s-gemini)' },
+  { key: 'Codex', color: 'var(--s-codex)' },
   { key: 'Other', label: tr('app.usage.familyOther'), color: 'var(--s-other)' }, // key = family name sent by the server
 ];
 const isActive = t => ['queued', 'running', 'stopping'].includes(t.status);
@@ -251,7 +253,7 @@ function renderSidebar() {
           ${p.branch ? `<span class="tag git">⎇ ${esc(p.branch)}</span>` : ''}
           ${p.mcpCount ? `<span class="tag mcp">🔌 ${p.mcpCount}</span>` : ''}
           ${p.pluginCount ? `<span class="tag plugin">🧩 ${p.pluginCount}</span>` : ''}
-          ${p.hasClaudeMd ? '<span class="tag md">CLAUDE.md</span>' : ''}
+          ${p.hasClaudeMd ? `<span class="tag md">${esc(p.ruleFile || 'AGENTS.md')}</span>` : ''}
         </span>
         <span class="proj-tools">
           <span class="star ${p.favorite ? 'on' : ''}" data-star="${esc(p.path)}" title="${tr('app.sidebar.star')}">${p.favorite ? '★' : '☆'}</span>
@@ -335,20 +337,23 @@ function renderStats() {
     ${machineCostStat(cost)}`;
 }
 // 💰 in the header = MACHINE-WIDE cost: every Claude Code session (terminal and Agents Factory), same as Token tab → All
-const mcost = { total: null, n: 0, at: 0, busy: false };
+const mcost = { total: null, out: 0, n: 0, at: 0, busy: false };
 async function loadMachineCost() {
   if (mcost.busy) return;
   mcost.busy = true;
   try {
     const r = await api('/api/sessions');
     mcost.total = r.sessions.reduce((s, x) => s + (x.cost || 0), 0);
+    mcost.out = r.sessions.reduce((s, x) => s + ((x.tokens && x.tokens.out) || 0), 0);
     mcost.n = r.sessions.length; mcost.at = Date.now();
     renderStats();
+    if (state.tab === 'dashboard' && !state.openTask) renderDashboard();
   } catch { /* retry next time */ } finally { mcost.busy = false; }
 }
 function machineCostStat(hubCost) {
   if (mcost.total === null) { loadMachineCost(); return `<span class="stat" data-tab="usage">💰 <b>…</b></span>`; }
   const tip = tr('app.stats.costTip', { n: mcost.n, hub: money(hubCost) || '$0', ago: ago(mcost.at) });
+  if (!mcost.total && mcost.out) return `<button type="button" class="stat stat-btn" data-tab="usage" title="${esc(tip)}">🪙 <b>${fmtTok(mcost.out)} tok</b></button>`;
   return `<button type="button" class="stat stat-btn" data-tab="usage" title="${esc(tip)}">💰 <b>${money(mcost.total) || '$0'}</b></button>`;
 }
 setInterval(loadMachineCost, 60000);
@@ -366,9 +371,10 @@ const curAgent = () => agentDef((state.tasks.get(state.openTask) || {}).agent);
 const agentName = a => (a.key === 'claude' ? 'Claude' : a.label);
 // agent badge: Claude is the default, so only shown when always = true
 function agentBadge(t, always) {
-  if (!always && (!t.agent || t.agent === 'claude')) return '';
-  const a = agentDef(t.agent);
-  return `<span class="tag agent-tag" style="--ac:${esc(a.color)}" title="${esc(tr('app.agent.tip', { label: a.label }))}" data-noicon>${esc(a.icon)} ${esc(a.label)}</span>`;
+  const key = typeof t === 'string' ? t : (t && t.agent);
+  if (!always && (!key || key === 'claude')) return '';
+  const a = agentDef(key);
+  return `<span class="tag agent-tag" style="--ac:${esc(a.color)}" title="${esc(tr('app.agent.tip', { label: a.label }))}">${esc(a.icon)} ${esc(a.label)}</span>`;
 }
 const meLabel = () => { const me = (state.overview && state.overview.me) || { name: tr('app.me.you'), avatar: '🧑‍💻' }; return `${me.avatar ? esc(me.avatar) + ' ' : ''}${esc(me.name)}`; };
 
@@ -509,6 +515,7 @@ function sessRow(s) {
           <button class="icon-btn xs" data-sessren="${s.id}" title="${tr('app.sessions.rename')}">✏️</button>
           <span class="sess-id" title="${tr('app.sessions.id')}">${(s.originId || s.id).slice(0, 8)}</span></div>
         <div class="sess-sub">
+          ${agentBadge(s)}
           ${state.project || state.sessGroup ? '' : `<button class="tag git tag-btn" data-sessproj="${esc(s.cwd)}" title="${esc(tr('app.sessions.projTip', { path: s.projectDisplay }))}">📁 ${esc(projName(s.cwd))}</button>`}
           <span>${ago(s.lastAt)}</span> · <span>${trn('app.sessions.prompts', s.prompts)}</span>
           ${s.tokens.out ? `· <span title="${tr('app.sessions.outTip')}">${tr('app.sessions.output', { n: fmtTok(s.tokens.out) })}</span>` : ''}
@@ -590,11 +597,32 @@ function cyclePermMode() {
   sel.value = PERM_CYCLE[(i + 1) % PERM_CYCLE.length];
   sel.dispatchEvent(new Event('change', { bubbles: true }));
 }
-// changing the mode in the bottom bar → the chip at the top of the chat updates immediately (applies from the next message)
-document.addEventListener('change', e => {
-  if (e.target.id !== 'chatPerm') return;
-  const chip = $('.chat-head .mode-chip');
-  if (chip) { chip.outerHTML = modeChip(e.target.value); const c2 = $('.chat-head .mode-chip'); if (c2) { c2.title = tr('app.perm.nextMsg'); c2.classList.add('flash'); } }
+// changing the model or permission mode in the bottom bar → save immediately to task state & server
+document.addEventListener('change', async e => {
+  const id = e.target && e.target.id;
+  if (id !== 'chatPerm' && id !== 'chatModel') return;
+  const t = state.tasks.get(state.openTask);
+  if (!t) return;
+  if (id === 'chatPerm') {
+    const perm = e.target.value;
+    if (perm === 'bypassPermissions' && !(await confirmBypass())) {
+      e.target.value = t.permissionMode || '';
+      if (e.target._sync) e.target._sync();
+      return;
+    }
+    t.permissionMode = perm || null;
+    t._cfgAt = Date.now();
+    if (state.chatCache && state.chatCache.id === t.id) state.chatCache.t.permissionMode = t.permissionMode;
+    const chip = $('.chat-head .mode-chip');
+    if (chip) { chip.outerHTML = modeChip(perm); const c2 = $('.chat-head .mode-chip'); if (c2) { c2.title = tr('app.perm.nextMsg'); c2.classList.add('flash'); } }
+    api(`/api/tasks/${t.id}/config`, { method: 'POST', body: { permissionMode: t.permissionMode } }).catch(err => toast(err.message, true));
+  } else if (id === 'chatModel') {
+    t.model = e.target.value || null;
+    t._cfgAt = Date.now();
+    if (state.chatCache && state.chatCache.id === t.id) state.chatCache.t.model = t.model;
+    scheduleRender();
+    api(`/api/tasks/${t.id}/config`, { method: 'POST', body: { model: t.model } }).catch(err => toast(err.message, true));
+  }
 });
 
 // ---------- compact usage limits (header + chat) ----------
@@ -848,6 +876,7 @@ function mcpItem(m) {
   return `
     <div class="item">
       <div class="item-head">🔌 ${esc(m.name)}
+        ${m.agent ? agentBadge(m.agent, true) : ''}
         <span class="${scopeTag}">${esc(m.scope)}</span>
         <span class="tag">${esc(m.type)}</span>
         ${m.scope === 'project' ? (m.disabled ? `<span class="tag err">${tr('app.mcp.disabled')}</span>` : m.approved ? `<span class="tag ok">${tr('app.mcp.approved')}</span>` : `<span class="tag warn">${tr('app.mcp.unapproved')}</span>`) : ''}
@@ -868,6 +897,7 @@ function pluginItem(p, extra = '') {
   return `
     <div class="item">
       <div class="item-head">🧩 ${esc(p.name || p.key.split('@')[0])}
+        ${p.agent ? agentBadge(p.agent, true) : ''}
         <span class="tag">@${esc(p.marketplace || p.key.split('@')[1] || '')}</span>
         ${p.version ? `<span class="tag">v${esc(p.version)}</span>` : ''}
         ${p.scope ? `<span class="tag ${p.enabled ? 'ok' : 'err'}">${tr(p.enabled ? 'app.plugin.on' : 'app.plugin.off')} · ${esc(p.scope)}</span>` : ''}
@@ -887,6 +917,7 @@ async function renderConfig() {
   const c = await projectCfg(target, true);
   if (state.tab !== 'config' || (state.project || state.overview.homePath) !== c.path) return;
   const list = (arr, cls) => arr.length ? arr.map(x => `<span class="tag ${cls}">${esc(x)}</span>`).join(' ') : '<span class="hint">—</span>';
+  const ruleLabel = esc(c.ruleFile || 'AGENTS.md');
   $('#view').innerHTML = `
     <div class="section-title">
       <h2>${machine ? tr('app.cfg.machineTitle') : '📁 ' + esc(projName(c.path))}</h2>
@@ -905,7 +936,7 @@ async function renderConfig() {
           <dt>${tr('app.cfg.defaultMode')}</dt><dd>${esc(c.defaultMode || tr('app.common.default'))}</dd>
           <dt>${tr('app.cfg.allowed')}</dt><dd>${tr('app.cfg.allowRules', { n: c.allowedTools })}</dd>
           <dt>${tr('app.cfg.settings')}</dt><dd>${c.settingsFiles.map(f => `<div><span class="tag">${esc(f.scope)}</span> ${esc(f.file)}</div>`).join('')}</dd>
-          <dt>CLAUDE.md</dt><dd>${c.claudeMd.map(esc).join('<br>') || '—'}</dd>
+          <dt>${ruleLabel}</dt><dd>${c.claudeMd.map(esc).join('<br>') || '—'}</dd>
         </dl>
       </div>
       <div class="panel">
@@ -926,7 +957,7 @@ async function renderConfig() {
           <dt>${tr('app.cfg.agents')}</dt><dd>${list([...c.agents.project, ...c.agents.user], 'plugin')}</dd>
         </dl>
       </div>
-      ${c.claudeMdPreview ? `<div class="panel" style="grid-column:1/-1"><h3>📘 CLAUDE.md</h3><pre class="mdprev">${esc(c.claudeMdPreview)}</pre></div>` : ''}
+      ${c.claudeMdPreview ? `<div class="panel" style="grid-column:1/-1"><h3>📘 ${ruleLabel}</h3><pre class="mdprev">${esc(c.claudeMdPreview)}</pre></div>` : ''}
     </div>`;
 }
 
@@ -997,6 +1028,7 @@ const attBusy = target => state.att[target].some(f => f.uploading);
 let dropTimer;
 document.addEventListener('dragover', e => {
   if (!e.dataTransfer || ![...e.dataTransfer.types].includes('Files')) return;
+  if (e.target.closest && e.target.closest('#files')) return;
   e.preventDefault();
   const zone = !$('#composeOverlay').hidden ? $('#composeDrop') : state.openTask ? $('#chatDrop') : null;
   if (zone) zone.hidden = false;
@@ -1005,6 +1037,7 @@ document.addEventListener('dragover', e => {
 });
 document.addEventListener('drop', e => {
   if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+  if (e.target.closest && e.target.closest('#files')) return;
   e.preventDefault();
   if (!$('#composeOverlay').hidden) addFiles('compose', [...e.dataTransfer.files]);
   else if (state.openTask) addFiles('chat', [...e.dataTransfer.files]);
@@ -1024,16 +1057,19 @@ $('#filePicker').onchange = e => { addFiles(pickTarget, [...e.target.files]); e.
 let claudeModelOpts = null;
 function applyComposeAgent() {
   const ag = agentDef(state.pickAgent);
-  $('#agentPicker').innerHTML = ((state.overview.agents && state.overview.agents.length) ? state.overview.agents : [agentDef('claude')]).map(x => `<button type="button" class="chip agent-chip ${x.key === ag.key ? 'on' : ''}" data-agent="${esc(x.key)}" style="--ac:${esc(x.color)}" ${x.available === false ? 'disabled' : ''} title="${esc(x.available === false ? tr('app.compose.notInstalledTip', { key: x.key }) : (x.version || x.label))}" data-noicon>${esc(x.icon)} ${esc(x.label)}${x.available === false ? ' · ' + tr('app.plugin.notInstalled') : ''}</button>`).join('');
+  $('#agentPicker').innerHTML = ((state.overview.agents && state.overview.agents.length) ? state.overview.agents : [agentDef('claude')]).map(x => `<button type="button" class="chip agent-chip ${x.key === ag.key ? 'on' : ''}" data-agent="${esc(x.key)}" style="--ac:${esc(x.color)}" ${x.available === false ? 'disabled' : ''} title="${esc(x.available === false ? tr('app.compose.notInstalledTip', { key: x.key }) : (x.version || x.label))}">${esc(x.icon)} ${esc(x.label)}${x.available === false ? ' · ' + tr('app.plugin.notInstalled') : ''}</button>`).join('');
   const msel = $('#model');
+  const prevAgent = msel.dataset.agent, prevModel = msel.value;
   if (!claudeModelOpts) claudeModelOpts = msel.innerHTML;
   msel.innerHTML = ag.key === 'claude' ? claudeModelOpts : `<option value="">${tr('app.compose.agentDefault')}</option>` + ag.models.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+  msel.dataset.agent = ag.key;
+  if (prevAgent === ag.key && prevModel && [...msel.options].some(o => o.value === prevModel)) msel.value = prevModel;
   const psel = $('#permissionMode');
   [...psel.options].forEach(o => { o.hidden = ag.key !== 'claude' && !ag.modes.includes(o.value); });
   if (psel.selectedOptions[0] && psel.selectedOptions[0].hidden) psel.value = ag.modes[0] || '';
   for (const sel of [msel, psel]) if (sel._sync) sel._sync();
-  $('#effort').closest('.field').hidden = !['claude', 'agy'].includes(ag.key);
-  $$('#composeForm details.more').forEach(d => { d.hidden = ag.key !== 'claude'; });
+  $('#effort').closest('.field').hidden = !['claude', 'agy', 'codex'].includes(ag.key);
+  $$('#composeForm details.more').forEach(d => { d.hidden = false; });
 }
 // ---------- SDLC skills ----------
 // Skills resolved per project: project skills first → machine/plugin skills → factory copy (fallback)
@@ -1081,8 +1117,10 @@ function pickSkill(name) {
 async function openCompose(prefill = {}) {
   state.pickSkill = prefill.skill || '';
   loadSkillList(prefill.projects ? prefill.projects[0] : state.project || '').then(renderSkillPicker);
-  state.pickAgent = prefill.agent || state.pickAgent || localStorage.getItem('hub-agent') || 'claude';
-  if (!agentDef(state.pickAgent) || agentDef(state.pickAgent).available === false) state.pickAgent = 'claude';
+  const availAgents = ((state.overview && state.overview.agents) || []).filter(a => a.available !== false);
+  const fallbackAgent = (availAgents[0] && availAgents[0].key) || 'claude';
+  state.pickAgent = prefill.agent || state.pickAgent || localStorage.getItem('hub-agent') || fallbackAgent;
+  if (!agentDef(state.pickAgent) || agentDef(state.pickAgent).available === false) state.pickAgent = fallbackAgent;
   applyComposeAgent();
   state.pickProjects = new Set(prefill.projects || (state.project ? [state.project] : []));
   if (prefill.plugin) state.pickPlugins.add(prefill.plugin);
@@ -1135,7 +1173,7 @@ async function submitCompose(e) {
 
 // ---------- chat window ----------
 function toolSummary(name, input = {}) {
-  return input.command || input.file_path || input.path || input.pattern || input.url || input.query || input.description || input.prompt || input.skill || (Object.keys(input).length ? JSON.stringify(input) : '');
+  return input.command || input.file_path || input.path || input.pattern || input.url || input.query || input.description || input.prompt || input.skill || input.CommandLine || input.Path || input.TargetFile || input.SearchPath || input.DirectoryPath || input.toolSummary || input.Role || input.cmd || (Object.keys(input).length ? JSON.stringify(input) : '');
 }
 function toolLabel(name) {
   const m = name.match(/^mcp__(.+?)__(.+)$/);
@@ -1194,7 +1232,7 @@ function evNode(ev) {
     case 'result':
       div.className = 'ev result md ' + (ev.ok ? 'ok' : 'bad');
       div.innerHTML = `<div class="rhead"><span class="tag ${ev.ok ? 'ok' : 'err'}">${ev.ok ? tr('app.chat.turnDone') : tr('app.chat.turnErr')}</span>
-        ${ev.out ? `<span class="tag">${tr('app.chat.outTokens', { n: fmtTok(ev.out) })}</span>` : ''}${ev.costTotal !== undefined ? `<span class="tag" title="${tr('app.chat.costTip', { total: money(ev.costTotal) })}">💰 +${money(ev.cost) || '$0'}</span>` : ev.cost ? `<span class="tag" title="${tr('app.chat.costCumTip')}">${tr('app.chat.costSession', { cost: money(ev.cost) })}</span>` : ''}${ev.duration ? `<span class="tag">⏱ ${dur(ev.duration)}</span>` : ''}
+        ${ev.in || ev.cr ? `<span class="tag">↑${fmtTok((ev.in || 0) + (ev.cr || 0))}</span>` : ''}${ev.out ? `<span class="tag">${tr('app.chat.outTokens', { n: fmtTok(ev.out) })}</span>` : ''}${ev.costTotal !== undefined ? `<span class="tag" title="${tr('app.chat.costTip', { total: money(ev.costTotal) })}">💰 +${money(ev.cost) || '$0'}</span>` : ev.cost ? `<span class="tag" title="${tr('app.chat.costCumTip')}">${tr('app.chat.costSession', { cost: money(ev.cost) })}</span>` : ''}${ev.duration ? `<span class="tag">⏱ ${dur(ev.duration)}</span>` : ''}
         ${ev.denials && ev.denials.length ? `<span class="tag warn" title="${tr('app.chat.deniedTip')}">${tr('app.chat.denied', { list: esc([...new Set(ev.denials)].join(', ')) })}</span>` : ''}</div>
         ${ev.ok ? '' : md((ev.textKey ? i18n.tx(ev) : ev.text) || '')}`;
       break;
@@ -1234,12 +1272,15 @@ function statusLine(t) {
   const lu = state.liveUsage[t.id] || {};
   const ctx = lu.context || t.context || 0, win = t.contextWindow || 1000000;
   const pct = Math.round(ctx / win * 100);
+  const inTok = (t.tokens ? (t.tokens.in || 0) + (t.tokens.cw || 0) : 0) + (lu.in || 0);
+  const crTok = (t.tokens ? (t.tokens.cr || 0) : 0) + (lu.cr || 0);
+  const outTok = (t.tokens ? (t.tokens.out || 0) : 0) + (lu.out || 0);
   const sel = (id, cur, opts) => `<select id="${id}">${opts.map(([v, l]) => `<option value="${v}" ${String(cur || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   return `
     ${(() => { const ag = agentDef(t.agent); const ms = [['', tr('app.chat.defaultModel')], ...ag.models.map(([v, l]) => [v, '🧠 ' + l])]; if (t.model && !ms.some(m => m[0] === t.model)) ms.push([t.model, '🧠 ' + t.model]); return sel('chatModel', t.model, ms); })()}
     ${sel('chatPerm', t.permissionMode, (agentDef(t.agent).modes.length ? agentDef(t.agent).modes : ['']).concat(agentDef(t.agent).modes.includes(t.permissionMode || '') ? [] : [t.permissionMode || '']).map(m => [m, permInfo(m)[0]]))}
     <span class="ctx" title="${tr('app.chat.ctxTip')}">${tr('app.chat.ctx', { used: fmtTok(ctx), win: fmtTok(win) })} <span class="meter ${meterCls(pct)}"><i style="width:${Math.max(1, pct)}%"></i></span></span>
-    <span title="${tr('app.chat.tokTip')}">↑${fmtTok(t.tokens ? t.tokens.in + t.tokens.cw : 0)} ↓${fmtTok((t.tokens ? t.tokens.out : 0) + (lu.out || 0))}</span>
+    <span title="${esc(tr('app.chat.tokTip') + (crTok ? ` · Cache: ${fmtTok(crTok)}` : ''))}">↑${fmtTok(inTok + crTok)} ↓${fmtTok(outTok)}</span>
     ${t.costUsd ? `<span>💰 ${money(t.costUsd)}</span>` : ''}
     <span class="sp"></span>${rlMini('sl')}`;
 }
@@ -1553,6 +1594,13 @@ async function sendChat() {
 }
 
 // ---------- realtime ----------
+function canRedrawStatusline() {
+  const sl = $('#statusline');
+  if (!sl) return false;
+  if (sl.contains(document.activeElement)) return false;
+  if (sl.querySelector('[aria-expanded="true"]')) return false;
+  return true;
+}
 function connectStream() {
   const es = new EventSource('/api/stream');
   es.onmessage = e => {
@@ -1567,6 +1615,12 @@ function connectStream() {
       if (prev && prev.bgLocal && !msg.task.bgConflict && !isActive(msg.task)) Object.assign(msg.task, { bgConflict: prev.bgConflict, bgState: prev.bgState, bgStatus: prev.bgStatus, bgLocal: true });
       // older server doesn't send progress → keep the browser's own count
       if (prev && msg.task.steps === undefined) for (const k of ['step', 'steps', 'todos', '_stepIds']) if (prev[k] !== undefined) msg.task[k] = prev[k];
+      // keep model / permissionMode just changed by the user while the config request is in flight
+      if (prev && prev._cfgAt && Date.now() - prev._cfgAt < 5000) {
+        msg.task.model = prev.model;
+        msg.task.permissionMode = prev.permissionMode;
+        msg.task._cfgAt = prev._cfgAt;
+      }
       if (!msg.task.costFixed && costFix.has(msg.task.id)) msg.task.costUsd = costFix.get(msg.task.id).base + costFix.get(msg.task.id).last;
       state.tasks.set(msg.task.id, msg.task);
       if (prev && isActive(prev) && !isActive(msg.task)) {
@@ -1583,7 +1637,7 @@ function connectStream() {
         renderBgBanner(msg.task);
         renderProg(msg.task);
         updateTyping(msg.task);
-        if (!$('#statusline').contains(document.activeElement)) $('#statusline').innerHTML = statusLine(msg.task);
+        if (canRedrawStatusline()) $('#statusline').innerHTML = statusLine(msg.task);
         if (!isActive(msg.task)) { state.live = ''; renderLive(); }
       }
     } else if (msg.type === 'event' && msg.id === state.openTask) {
@@ -1594,11 +1648,13 @@ function connectStream() {
       if (msg.reset) state.live = ''; else state.live += msg.text;
       if (!liveRaf) liveRaf = requestAnimationFrame(renderLive);
     } else if (msg.type === 'usage') {
-      const lu = (state.liveUsage[msg.id] = state.liveUsage[msg.id] || { out: 0 });
-      lu.context = msg.context; lu.out += msg.out || 0;
+      const lu = (state.liveUsage[msg.id] = state.liveUsage[msg.id] || { in: 0, cr: 0, out: 0 });
+      lu.context = msg.context;
+      if (msg.turnOut !== undefined) { lu.in = msg.turnIn || 0; lu.cr = msg.turnCr || 0; lu.out = msg.turnOut || 0; }
+      else lu.out += msg.out || 0;
       const t = state.tasks.get(msg.id);
       if (t) t.context = msg.context;
-      if (msg.id === state.openTask && t && !$('#statusline').contains(document.activeElement)) $('#statusline').innerHTML = statusLine(t);
+      if (msg.id === state.openTask && t && canRedrawStatusline()) $('#statusline').innerHTML = statusLine(t);
     } else if (msg.type === 'account') {
       toast(tr('app.account.switched', { email: msg.account.email }), 'info');
       loadOverview().then(() => { renderRl(); if (state.tab === 'usage') renderUsage(true); });
@@ -1607,7 +1663,7 @@ function connectStream() {
       renderRl();
       if (state.tab === 'usage' && state.usage) state.usage.rateLimit = msg.rateLimit;
       const ot = state.openTask && state.tasks.get(state.openTask);
-      if (ot && $('#statusline') && !$('#statusline').contains(document.activeElement)) $('#statusline').innerHTML = statusLine(ot);
+      if (ot && canRedrawStatusline()) $('#statusline').innerHTML = statusLine(ot);
     } else if (msg.type === 'removed') {
       state.tasks.delete(msg.id);
       if (state.openTask === msg.id) closeChat();
@@ -2059,7 +2115,7 @@ async function openFolderPicker(start) {
     </div>`, 'fp-modal');
   const $w = s => wrap.querySelector(s);
   const target = () => st.pick || (st.data && st.data.dir);
-  const badge = d => `${d.git ? '<span class="tag git">git</span>' : ''}${d.claude ? '<span class="tag">CLAUDE</span>' : ''}${d.inHub ? `<span class="tag ok">${tr('app.common.inHub')}</span>` : ''}${d.hidden ? `<span class="tag warn">${tr('app.fp.removed')}</span>` : ''}`;
+  const badge = d => `${d.git ? '<span class="tag git">git</span>' : ''}${d.claude ? '<span class="tag">AGENT</span>' : ''}${d.inHub ? `<span class="tag ok">${tr('app.common.inHub')}</span>` : ''}${d.hidden ? `<span class="tag warn">${tr('app.fp.removed')}</span>` : ''}`;
   const draw = () => {
     const d = st.data;
     if (!d) return;

@@ -20,7 +20,7 @@
   "files.editor.save": "💾 Save",
   "files.editor.reloadTip": "Reload from disk",
   "files.editor.closeTip": "Close file (Esc)",
-  "files.editor.staleMsg": "⚠ The file was changed on disk (by Claude or another editor) while you were editing.",
+  "files.editor.staleMsg": "⚠ The file was changed on disk (by an agent or another editor) while you were editing.",
   "files.editor.useDisk": "Use the version on disk",
   "files.editor.keepMine": "Keep my version, overwrite",
   "files.editor.binary": "Binary file ({size}) — can't be opened as text.",
@@ -37,5 +37,10 @@
   "files.new.hint": "In {project}. End with “/” to create a folder.",
   "files.new.failed": "Could not create",
   "files.new.created": "Created {path}",
-  "files.toChat.copied": "No chat open — copied “{ref}”"
+  "files.toChat.copied": "No chat open — copied “{ref}”",
+  "files.tree.dragTip": "Drag into chat to insert path, or drop onto a folder to move",
+  "files.tree.moved": "Moved to {path}",
+  "files.tree.moveFailed": "Could not move item",
+  "files.tree.uploaded": "Added {name} to {dir}",
+  "files.tree.uploadFailed": "Could not add file to folder"
 }

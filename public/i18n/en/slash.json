@@ -1,7 +1,7 @@
 {
-  "slash.hub.stop": "Stop the running Claude",
+  "slash.hub.stop": "Stop the running agent",
   "slash.hub.rename": "Rename the chat — /rename <new name>",
-  "slash.hub.model": "Change model — /model opus | opus[1m] | sonnet | haiku | fable",
+  "slash.hub.model": "Change model — /model <model-name>",
   "slash.hub.terminal": "Open this exact session in a terminal (for commands that need an interactive UI)",
   "slash.hub.files": "Toggle the Files panel",
   "slash.hub.new": "Assign task / open a new chat",
@@ -11,7 +11,7 @@
   "slash.cmd.context": "Show context usage",
   "slash.cmd.usage": "Show usage limits / tokens used",
   "slash.cmd.cost": "Cost of this session",
-  "slash.cmd.init": "Create CLAUDE.md for the project",
+  "slash.cmd.init": "Create AGENTS.md for the project",
   "slash.cmd.review": "Review code",
   "slash.cmd.code-review": "Review current changes",
   "slash.cmd.security-review": "Security review of changes",

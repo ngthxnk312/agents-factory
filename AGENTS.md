@@ -65,18 +65,19 @@ public/
   bgview.js         Background agents (claude --bg) list + read-only live viewer
   nav.js            Ctrl/middle-click → new tab, right-click context menus with info
   resize.js         Drag-to-resize columns (sizes saved in layout.sizes)
-  img/logo.svg      Logo / favicon / app icon
+  img/logo.svg      Pixel-art factory logo / favicon / app icon
+  img/vi.svg, en.svg Pixel-art flag icons for the language dropdown
 skills/             Factory SDLC skills (sdlc-*/SKILL.md) — FALLBACK ONLY, see "SDLC skills" below; index in skills/README.md
 data/               Runtime state (gitignored): hub.json, tasks.json, logs/<task>.jsonl, uploads/, sessions-cache.json,
                     ratelimit.json, accounts.json, commands.json
 ```
 
-Script load order: `icons.js → i18n.js → ui.js → files.js → slash.js → nav.js → app.js → dashboard.js → bgview.js → resize.js`. These are classic scripts sharing one global scope. Top-level `const`/`function` from `app.js` (`state`, `api`, `esc`, `$`, `$$`, `toast`, `layout`, …) are used by the other files **at call time**, so never call them at load time from a file that loads before `app.js`.
+Script load order: `icons.js → i18n.js → ui.js → files.js → slash.js → nav.js → app.js → handoff.js → dashboard.js → bgview.js → resize.js`. These are classic scripts sharing one global scope. Top-level `const`/`function` from `app.js` (`state`, `api`, `esc`, `$`, `$$`, `toast`, `layout`, …) are used by the other files **at call time**, so never call them at load time from a file that loads before `app.js`.
 
 ## Backend (`server.js`)
 
 - **Config:** `hub.config.json` gives the defaults, and environment variables override it (`PORT`, `HUB_DATA`, `CLAUDE_BIN`, `CLAUDE_CONFIG_DIR`, `MAX_PARALLEL`, `IDLE_MINUTES`).
-- **Claude chats:** each Hub chat ("task") runs one long-lived process, `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages`, started in the project's directory. The CLI therefore loads that project's MCP servers, plugins, CLAUDE.md and settings itself.
+- **Claude chats:** each Hub chat ("task") runs one long-lived process, `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages`, started in the project's directory. The CLI therefore loads that project's MCP servers, plugins, `AGENTS.md` / `CLAUDE.md` and settings itself.
   - User messages go in on stdin as JSON lines. `handleLine()` turns stdout into events.
   - The process closes after `IDLE_MINUTES` of idle and is reopened with `--resume`.
   - Changing the model, permission mode or plugins restarts the process with `--resume`.
@@ -84,11 +85,12 @@ Script load order: `icons.js → i18n.js → ui.js → files.js → slash.js →
 - **Events:** saved to `data/logs/<taskId>.jsonl` and broadcast over SSE at `/api/stream`.
   - SSE message types: `task`, `event`, `delta`, `usage`, `ratelimit`, `removed`, `sessions-updated`, `account`.
   - Event kinds that `evNode()` renders: `user`, `text`, `thinking`, `init`, `tool`, `tool_result`, `result`, `stderr`, `system`.
-- **Session history:** read incrementally from `~/.claude/projects/*/*.jsonl` (byte offsets are cached in `sessions-cache.json`; bump `SCAN_V` to force a full rescan).
-  - Token usage is deduplicated by `message.id`.
+- **Session history & cost:** read incrementally from `~/.claude/projects/*/*.jsonl`, `~/.gemini/antigravity-cli/brain/*`, `~/.codex/sessions/*`, and `~/.gemini/tmp/*/chats/*` (byte offsets and mtimes are cached in `sessions-cache.json`; bump `SCAN_V` to force a full rescan).
+  - Token usage is deduplicated by message/step ID.
   - Subagent usage comes from `<id>/subagents/*.jsonl`.
-- **Accounts:** usage is attributed to the account logged in at that moment. `accounts.json` keeps the timeline (polled from `~/.claude.json` `oauthAccount`). Claude Code does not record the account per session, so usage from before tracking began is "unknown".
-- **SDLC skills:** `resolveSkills(project)` merges, highest priority first: project skills (`<project>/.claude/skills`), user skills (`~/.claude/skills`, nested folders allowed), native/plugin skills named in a factory skill's `prefer:` field (installed plugins' `skills/` + the CLI's reported slash commands, persisted in `commands.json`), then the factory's own `skills/sdlc-*`. For Claude, a non-factory resolution is invoked natively as `/<skill> …`; a factory skill goes into `--append-system-prompt` (task skill) or wraps the message (one-off `/sdlc-x`). Other agents get the resolved `SKILL.md` body inlined on the first turn.
+  - Session USD cost uses CLI-reported `runs` when present or estimates cost from token usage via `PRICE_PER_M` / `estimateCost()`.
+- **Accounts:** usage is attributed to the account logged in at that moment. `accounts.json` keeps the timeline (polled from `~/.claude.json`, `~/.gemini/oauth_creds.json`, `~/.codex/auth.json`). Usage from before tracking began is "unknown".
+- **SDLC skills:** `resolveSkills(project)` merges, highest priority first: project skills (`<project>/.agents/skills`, `.agent/skills`, `.claude/skills`, `.codex/skills`, `.gemini/skills`), user skills (`~/.agents/skills`, `~/.gemini/antigravity-cli/builtin/skills`, `~/.claude/skills`, `~/.codex/skills`, `~/.gemini/config/skills`, nested folders allowed), native/plugin skills named in a factory skill's `prefer:` field (installed plugins' `skills/` + the CLI's reported slash commands, persisted in `commands.json`), then the factory's own `skills/sdlc-*`. For Claude, a non-factory resolution is invoked natively as `/<skill> …`; a factory skill goes into `--append-system-prompt` (task skill) or wraps the message (one-off `/sdlc-x`). Other agents get the resolved `SKILL.md` body inlined on the first turn.
 - **Agent handoff:** `POST /api/tasks/:id/handoff {agent, clear, model, permissionMode, note}` → `switchAgent()` switches the agent of the SAME task: stops the claude process (`afterProcExit`), moves the old session to `pastSessions`, resets `sessionId`/cost counters and logs a `system` event carrying `agentSwitch {from, to, clear}`. Unless `clear` (forced when the agent is unchanged = /clear), it sends a brief from `handoffBrief()` (original request, todos, files changed/read from tool events, recent dialogue within a size budget, labelled per agent, only after the last clear); with `clear`, `note` is sent as a plain first message. Old tasks may still carry `handoffFrom`/`handoffTo` links from the previous new-chat behaviour; the user event shows a short `displayText` instead of the whole brief. UI lives in `public/handoff.js` (namespace `handoff.*`).
 - **Background agents:** listed via `claude agents --json` (cached). Removing one runs `claude stop` + `claude rm`. The CLI daemon only runs on demand, so start it with `claude daemon run` when `rm` reports it unreachable.
 

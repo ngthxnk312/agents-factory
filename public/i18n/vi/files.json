@@ -20,7 +20,7 @@
   "files.editor.save": "💾 Lưu",
   "files.editor.reloadTip": "Đọc lại từ đĩa",
   "files.editor.closeTip": "Đóng file (Esc)",
-  "files.editor.staleMsg": "⚠ File vừa bị sửa trên đĩa (Claude hoặc editor khác) trong lúc anh đang sửa.",
+  "files.editor.staleMsg": "⚠ File vừa bị sửa trên đĩa (bởi agent hoặc editor khác) trong lúc anh đang sửa.",
   "files.editor.useDisk": "Lấy bản trên đĩa",
   "files.editor.keepMine": "Giữ bản của em, ghi đè",
   "files.editor.binary": "File nhị phân ({size}) — không mở dạng chữ được.",
@@ -37,5 +37,10 @@
   "files.new.hint": "Trong {project}. Kết thúc bằng “/” để tạo thư mục.",
   "files.new.failed": "Không tạo được",
   "files.new.created": "Đã tạo {path}",
-  "files.toChat.copied": "Chưa mở chat — đã copy “{ref}”"
+  "files.toChat.copied": "Chưa mở chat — đã copy “{ref}”",
+  "files.tree.dragTip": "Kéo vào khung chat để chèn đường dẫn, hoặc kéo thả vào thư mục khác để di chuyển",
+  "files.tree.moved": "Đã chuyển tới {path}",
+  "files.tree.moveFailed": "Không di chuyển được",
+  "files.tree.uploaded": "Đã thêm {name} vào {dir}",
+  "files.tree.uploadFailed": "Không thêm được file vào thư mục"
 }

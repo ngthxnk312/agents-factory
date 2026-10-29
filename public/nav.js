@@ -118,7 +118,11 @@ function ctxItems(el, url) {
         await api(`/api/sessions/${s.id}/rename`, { method: 'POST', body: { name } }); toast(t('nav.toast.renamed'), 'ok');
       } },
       { icon: '📋', label: t('nav.sess.copySessionId'), hint: s.id.slice(0, 8), onClick: () => copyText(s.id, t('nav.what.sessionId')) },
-      { icon: '📋', label: t('nav.sess.copyResume'), hint: 'claude --resume', onClick: () => copyText(`cd "${s.cwd}" && claude --resume ${s.id}`, t('nav.what.command')) },
+      { icon: '📋', label: t('nav.sess.copyResume'), hint: s.agent === 'agy' ? 'agy --conversation' : s.agent === 'codex' ? 'codex resume' : s.agent === 'gemini' ? 'gemini --resume' : 'claude --resume',
+        onClick: () => {
+          const rcmd = s.agent === 'agy' ? `agy --conversation ${s.id}` : s.agent === 'codex' ? `codex resume ${s.id}` : s.agent === 'gemini' ? `gemini --resume ${s.id}` : `claude --resume ${s.id}`;
+          copyText(`cd "${s.cwd}" && ${rcmd}`, t('nav.what.command'));
+        } },
       { icon: '🖥', label: t('nav.sess.openTerminal'), onClick: () => api('/api/terminal', { method: 'POST', body: { path: s.cwd, sessionId: s.id } }).then(() => toast(t('nav.toast.sessionTerminalOpened'))) },
       { divider: true },
       { icon: '🗑', label: t('nav.sess.delete'), danger: true, onClick: () => state.sessions ? deleteSessionsUI([s.id]) : toast(t('nav.sess.deleteFromTab'), 'info') },
@@ -132,7 +136,7 @@ function ctxItems(el, url) {
     const ts = [...state.tasks.values()].filter(x => x.projectPath === p.path);
     return [
       { info: { title: projName(p.path), sub: p.display,
-        chips: `${p.favorite ? `<span class="tag warn">${esc(t('nav.proj.chipPinned'))}</span>` : ''}${p.branch ? `<span class="tag git">⎇ ${esc(p.branch)}</span>` : ''}${p.hasClaudeMd ? '<span class="tag">CLAUDE.md</span>' : ''}`,
+        chips: `${p.favorite ? `<span class="tag warn">${esc(t('nav.proj.chipPinned'))}</span>` : ''}${p.branch ? `<span class="tag git">⎇ ${esc(p.branch)}</span>` : ''}${p.hasClaudeMd ? `<span class="tag">${esc(p.ruleFile || 'AGENTS.md')}</span>` : ''}`,
         rows: [[t('nav.proj.rowModel'), p.model || t('nav.proj.defaultModel')], [t('nav.proj.rowMcp'), p.mcpCount], [t('nav.proj.rowPlugins'), p.pluginCount], [t('nav.proj.rowChats'), ts.length], [t('nav.proj.rowRunning'), ts.filter(isActive).length || '']] } },
       { icon: '📁', label: t('nav.proj.view'), onClick: () => { state.project = p.path; closeChat(); renderSidebar(); filesCtx(); render(); } },
       ...common,

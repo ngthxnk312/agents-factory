@@ -1,7 +1,7 @@
 {
-  "slash.hub.stop": "Dừng Claude đang chạy",
+  "slash.hub.stop": "Dừng agent đang chạy",
   "slash.hub.rename": "Đổi tên cuộc chat — /rename <tên mới>",
-  "slash.hub.model": "Đổi model — /model opus | opus[1m] | sonnet | haiku | fable",
+  "slash.hub.model": "Đổi model — /model <tên-model>",
   "slash.hub.terminal": "Mở đúng phiên này trong terminal (dùng lệnh cần giao diện tương tác)",
   "slash.hub.files": "Bật / tắt cột File",
   "slash.hub.new": "Giao việc / mở chat mới",
@@ -11,7 +11,7 @@
   "slash.cmd.context": "Xem context đang dùng",
   "slash.cmd.usage": "Xem hạn mức / token đã dùng",
   "slash.cmd.cost": "Chi phí phiên này",
-  "slash.cmd.init": "Tạo CLAUDE.md cho project",
+  "slash.cmd.init": "Tạo AGENTS.md cho project",
   "slash.cmd.review": "Review code",
   "slash.cmd.code-review": "Review thay đổi hiện tại",
   "slash.cmd.security-review": "Rà soát bảo mật thay đổi",

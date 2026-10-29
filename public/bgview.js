@@ -4,6 +4,10 @@
 
 const bg = { agents: {}, at: 0, viewer: null };
 const BG_STATE = { working: [t('bgview.state.working'), 'run'], busy: [t('bgview.state.working'), 'run'], blocked: [t('bgview.state.blocked'), 'wait'], done: [t('bgview.state.done'), 'ok'], idle: [t('bgview.state.idle'), 'idle'] };
+window.addEventListener('langchange', () => {
+  for (const [k, key] of [['working', 'working'], ['busy', 'working'], ['blocked', 'blocked'], ['done', 'done'], ['idle', 'idle']]) BG_STATE[k][0] = t('bgview.state.' + key);
+  if (bg.listEl) drawBgList();
+});
 const bgState = a => BG_STATE[a.state] || BG_STATE[a.status] || [a.state || a.status || '?', 'idle'];
 const bgWorking = a => a.state === 'working' || a.status === 'busy';
 
@@ -127,7 +131,8 @@ function openBgViewer(a) {
       v.offset = r.offset;
       // evNode uses state.toolNodes to match tool results → use a separate map for the viewer
       const keep = state.toolNodes; state.toolNodes = v.nodes;
-      try { for (const ev of r.events) { const n = evNode(ev); if (n) tl.appendChild(n); } } finally { state.toolNodes = keep; }
+      const keepAg = state.evAgent; state.evAgent = 'claude'; // background sessions are always Claude Code
+      try { for (const ev of r.events) { const n = evNode(ev); if (n) tl.appendChild(n); } } finally { state.toolNodes = keep; state.evAgent = keepAg; }
       if (!tl.children.length) tl.innerHTML = `<div class="empty">${esc(t('bgview.viewer.noContent'))}</div>`;
       if (v.follow) tl.scrollTop = tl.scrollHeight;
       if (Date.now() - bg.at > 5000) loadBgAgents();

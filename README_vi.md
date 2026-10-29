@@ -25,7 +25,7 @@ node server.js        # hoặc chạy trực tiếp
 - Mỗi chat Claude là một tiến trình `claude` chạy suốt cuộc chat (stream-json), khởi động trong thư mục project. Nhờ vậy nó nạp đúng MCP, plugin, CLAUDE.md, skill và settings như khi mở bằng terminal.
 - Chữ hiện dần theo thời gian thực, và anh nhắn thêm được trong lúc agent đang làm.
 - Agent khác (Antigravity, Codex, Gemini, agent tuỳ ý) chạy một tiến trình cho mỗi tin nhắn, rồi nối tiếp phiên bằng ID phiên.
-- **Đổi agent** (nút ⇄ ở đầu chat): chuyển cuộc chat sang agent khác, ví dụ Claude → Antigravity. Phiên của các CLI không chuyển qua nhau được, nên Hub mở chat mới với agent đích và bàn giao ngữ cảnh: yêu cầu gốc, danh sách việc, file đã sửa, các trao đổi gần đây. Hai chat được liên kết với nhau.
+- **Đổi agent** (nút ⇄ ở đầu chat): chuyển cuộc chat sang agent khác, ví dụ Claude → Antigravity. Đổi ngay trong chat đang mở, không tạo chat mới. Phiên của các CLI không chuyển qua nhau được, nên agent đích mở phiên mới và — nếu chọn mang theo context — nhận bản bàn giao: yêu cầu gốc, danh sách việc, file đã sửa, các trao đổi gần đây. Chọn "Xoá context" thì agent bắt đầu sạch; chọn chính agent đang dùng + xoá context tương đương /clear mà vẫn giữ chat.
 - Chế độ quyền giống terminal Claude Code: `default`, `⏵⏵ accept edits`, `⏸ plan`, `⏵⏵ auto`, `bypass`. Nhấn **Shift+Tab** trong ô chat để đổi vòng.
 - Gõ `/` trong ô chat để chọn lệnh CLI, skill, plugin và lệnh của Hub (`/stop /rename /model /terminal /files /new /help`).
 - Đính kèm file bằng kéo thả, dán hoặc nút 📎.

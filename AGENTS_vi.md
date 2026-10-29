@@ -105,9 +105,9 @@ data/               Dữ liệu lúc chạy (không đưa lên git): hub.json, t
   Cách dùng sau khi chọn:
   - Với Claude: skill không phải của factory được gọi theo cách gốc là `/<skill> …`. Skill của factory thì đưa vào `--append-system-prompt` (khi chọn skill cho cả việc) hoặc chèn vào tin nhắn (khi gõ `/sdlc-x` một lần).
   - Với agent khác: nội dung `SKILL.md` đã chọn được chèn vào tin nhắn đầu tiên.
-- **Bàn giao sang agent khác:** `POST /api/tasks/:id/handoff {agent, model, permissionMode, note}`.
+- **Đổi agent trong cùng chat:** `POST /api/tasks/:id/handoff {agent, clear, model, permissionMode, note}` → `switchAgent()`: dừng tiến trình claude (`afterProcExit`), cất phiên cũ vào `pastSessions`, reset `sessionId`/bộ đếm chi phí, ghi sự kiện `system` có `agentSwitch {from, to, clear}`.
   - `handoffBrief()` dựng bản bàn giao gồm: yêu cầu gốc, todo, file đã sửa / đã đọc (lấy từ sự kiện tool), các trao đổi gần nhất trong giới hạn độ dài.
-  - Hub tạo task mới cho agent đích; `handoffFrom` / `handoffTo` liên kết hai chat với nhau. Tin nhắn hiển thị chỉ là `displayText` ngắn, không hiện cả bản bàn giao.
+  - Không `clear` thì gửi bản bàn giao (chỉ lấy phần sau lần xoá context gần nhất, ghi rõ agent nào nói). `clear` (bắt buộc khi giữ nguyên agent = /clear) thì chỉ gửi `note` nếu có. Tin nhắn hiển thị chỉ là `displayText` ngắn. Task cũ có thể còn `handoffFrom` / `handoffTo` từ cách làm trước (mở chat mới).
   - Giao diện nằm ở `public/handoff.js` (namespace `handoff.*`).
 - **Agent chạy nền:** liệt kê bằng `claude agents --json` (có cache). Gỡ agent thì chạy `claude stop` rồi `claude rm`. Dịch vụ nền (daemon) của CLI chỉ chạy khi có việc, nên nếu `rm` báo không kết nối được thì bật nó bằng `claude daemon run`.
 
@@ -143,7 +143,7 @@ data/               Dữ liệu lúc chạy (không đưa lên git): hub.json, t
   - Thêm khoá vào **cả** file `vi` và `en`. Ngày giờ định dạng theo `i18n.locale`. Tooltip và menu chuột phải cũng lấy qua `t()`.
   - Chữ do server tạo: lỗi HTTP được dịch theo header `X-Lang` (trả về `{ error, errorKey }`). Chữ server lưu lại (sự kiện, `lastText`/`note` của task) mang `textKey` + `params` kèm bản tiếng Việt dự phòng, giao diện hiển thị bằng `i18n.tx()`.
   - Không dịch nội dung của người dùng hay của agent.
-  - Thêm ngôn ngữ mới: tạo thư mục `public/i18n/<lang>/` và thêm vào `LANGS` trong i18n.js. Đổi ngôn ngữ sẽ tải lại trang.
+  - Thêm ngôn ngữ mới: tạo thư mục `public/i18n/<lang>/` và thêm vào `LANGS` trong i18n.js. Đổi ngôn ngữ diễn ra tại chỗ (không tải lại trang, có hiệu ứng mờ chuyển bằng View Transition): i18n.js thay từ điển, áp lại `data-i18n`, rồi phát sự kiện `langchange`. **Nhãn nào được dịch sẵn lúc tải trang (hằng số cấp module như `STATUS`, `PERM_MODES`, `HUB_CMDS`) phải được dịch lại trong một listener `langchange`** — xem `relabelConstants()` trong app.js và các listener trong files.js, slash.js, bgview.js, resize.js. Tốt nhất là gọi `t()` ngay lúc render.
 - **Điều hướng:** dùng phần hash của URL: `#tab=…&project=…`, `#chat=<taskId>`, `#session=<sessionId>`. Link phải mở được ở tab mới.
 - **Khung chat:** `.timeline` là cột flex, nên các phần tử con cần `flex-shrink: 0`; nếu không, các `<details>` đang thu gọn bị ép thành vạch mảnh. Khung chỉ tự cuộn xuống khi người dùng đang ở cuối (`state.follow`).
 - **Bẫy khi sửa code bằng script:** trong `String.prototype.replace`, chuỗi thay thế coi `$$` là `$`, nên chuỗi chứa `$$(` sẽ lặng lẽ thành `$(`. Hãy dùng hàm thay thế, hoặc kiểm tra lại sau khi sửa.

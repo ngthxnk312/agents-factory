@@ -8,6 +8,8 @@
 //   <input data-i18n-attr="placeholder:sidebar.search;title:sidebar.searchTip">
 // Missing keys fall back to Vietnamese (the reference language), then to the key itself.
 // Server-generated text carries { textKey, params } (see tx()) so stored events follow the current language.
+// Switching language happens in place (no reload): the dictionary is swapped, static markup re-applied, then a
+// 'langchange' event lets each module rebuild its translated constants and re-render (see the 'langchange' listeners in app.js, files.js, bgview.js, resize.js).
 (function () {
   const LANGS = { vi: { label: 'Tiếng Việt', locale: 'vi-VN' }, en: { label: 'English', locale: 'en-GB' } };
   // One file per namespace and language; keep in sync with the files in public/i18n/<lang>/
@@ -30,7 +32,12 @@
     return out;
   }
   const base = loadLang('vi');
-  const dict = lang === 'vi' ? base : loadLang(lang);
+  let dict = lang === 'vi' ? base : loadLang(lang);
+  // the other languages are fetched in the background so a switch is instant
+  const dicts = { vi: base, [lang]: dict };
+  const prefetch = l => Promise.all(NAMESPACES.map(ns => fetch(`/i18n/${l}/${ns}.json`).then(r => (r.ok ? r.json() : {})).catch(() => ({}))))
+    .then(parts => { if (!dicts[l]) dicts[l] = Object.assign({}, ...parts); });
+  setTimeout(() => Object.keys(LANGS).forEach(l => dicts[l] || prefetch(l)), 1500);
 
   function t(key, params) {
     let s = dict[key];
@@ -60,7 +67,22 @@
   function setLang(l) {
     if (!LANGS[l] || l === lang) return;
     try { localStorage.setItem('hub-lang', l); } catch { /* ignore */ }
-    location.reload();
+    const next = dicts[l] || (dicts[l] = loadLang(l));
+    const swap = () => {
+      lang = l; dict = next;
+      Object.assign(window.i18n, { lang, locale: LANGS[lang].locale });
+      document.documentElement.lang = lang;
+      apply(document.body);
+      for (const b of document.querySelectorAll('#langSwitch [data-lang]')) { const on = b.dataset.lang === lang; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }
+      const sw = document.getElementById('langSwitch');
+      if (sw) sw.setAttribute('aria-label', t('common.language'));
+      const wait = []; // listeners push promises for async re-renders, so the cross-fade waits for them
+      window.dispatchEvent(new CustomEvent('langchange', { detail: { lang, wait } }));
+      return Promise.all(wait).catch(() => {});
+    };
+    // cross-fade old → new text, like the theme switch; plain swap where View Transitions aren't supported
+    const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (document.startViewTransition && !reduce) document.startViewTransition(swap); else swap();
   }
   // Language switch in the top bar (SVG icon from the sprite)
   function mountSwitch() {

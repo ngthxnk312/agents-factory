@@ -171,11 +171,14 @@ async function openFileLink(p) {
 }
 
 // ---------- data loading ----------
-async function loadOverview() {
-  state.overview = await api('/api/overview');
+function renderCliVersion() {
   const ags = (state.overview.agents || []).filter(a => a.available);
   $('#cliVersion').textContent = `${ags.length ? ags.map(a => a.label).join(' · ') : (state.overview.claudeVersion || 'Claude Code')} · ${trn('app.header.projects', state.overview.projects.length)}`;
   setTip($('#cliVersion'), ags.map(a => `${a.label}: ${a.version || ''}`).join('\n') || state.overview.claudeVersion || '');
+}
+async function loadOverview() {
+  state.overview = await api('/api/overview');
+  renderCliVersion();
   if (activeWs && !curWs()) activeWs = '';
   state.rateLimit = state.overview.rateLimit;
   renderRl();
@@ -466,7 +469,7 @@ const sessLocked = s => s.inHub || s.recentlyActive;
 function sessRows() {
   const d = state.sessions;
   const q = state.sessionQuery.trim().toLowerCase();
-  return d ? d.sessions.filter(s => inScope(s.cwd) && (!q || `${s.title} ${s.firstPrompt || ''} ${s.project}`.toLowerCase().includes(q))) : [];
+  return d ? d.sessions.filter(s => inScope(s.cwd) && (!q || `${s.title} ${s.firstPrompt || ''} ${s.project} ${s.id} ${(s.parts || []).map(x => x.id).join(' ')}`.toLowerCase().includes(q))) : [];
 }
 function drawSessions() {
   const d = state.sessions;
@@ -504,7 +507,7 @@ function sessRow(s) {
       <div class="sess-main">
         <div class="sess-title"><span title="${esc(s.firstPrompt || '')}">${esc(s.title)}</span>
           <button class="icon-btn xs" data-sessren="${s.id}" title="${tr('app.sessions.rename')}">✏️</button>
-          <span class="sess-id" title="${tr('app.sessions.id')}">${s.id.slice(0, 8)}</span></div>
+          <span class="sess-id" title="${tr('app.sessions.id')}">${(s.originId || s.id).slice(0, 8)}</span></div>
         <div class="sess-sub">
           ${state.project || state.sessGroup ? '' : `<button class="tag git tag-btn" data-sessproj="${esc(s.cwd)}" title="${esc(tr('app.sessions.projTip', { path: s.projectDisplay }))}">📁 ${esc(projName(s.cwd))}</button>`}
           <span>${ago(s.lastAt)}</span> · <span>${trn('app.sessions.prompts', s.prompts)}</span>
@@ -514,6 +517,7 @@ function sessRow(s) {
           ${Object.keys(s.models || {}).map(m => `<span class="tag">${esc(m)}</span>`).join('')}
           ${s.recentlyActive && !s.inHub ? `<span class="tag warn" title="${tr('app.sessions.recentTip')}">${tr('app.sessions.recent')}</span>` : ''}
           ${s.hubTask ? `<span class="tag coral">${tr('app.common.inHub')}</span>` : ''}
+          ${s.parts ? `<span class="tag" title="${esc(tr('app.sessions.clearedTip', { id: s.id.slice(0, 8) }) + '\n' + s.parts.map(x => `${x.id.slice(0, 8)} · ${ago(x.lastAt)} · ${trn('app.sessions.prompts', x.prompts)}`).join('\n'))}">🧹 ${tr('app.sessions.cleared', { n: s.parts.length - 1 })}</span>` : ''}
           ${s.bg ? `<span class="tag warn" title="${esc(tr('app.sessions.bgTip', { id: s.bg.id + (s.bg.name ? ' · ' + s.bg.name : '') }))}">${tr('app.sessions.bgTag')} · ${esc(s.bg.state || '')}</span>` : ''}
         </div>
       </div>
@@ -1147,7 +1151,7 @@ function evNode(ev) {
       if (ev.text) state.lastPrompts.push(ev.text);
       break;
     }
-    case 'text': div.className = 'ev text md'; div.innerHTML = `<span class="who" data-noicon>${esc(curAgent().icon)} ${esc(agentName(curAgent()))}</span>` + md(ev.text); break;
+    case 'text': { const ag = state.evAgent ? agentDef(state.evAgent) : curAgent(); div.className = 'ev text md'; div.innerHTML = `<span class="who" data-noicon>${esc(ag.icon)} ${esc(agentName(ag))}</span>` + md(ev.text); break; }
     case 'thinking': {
       const d = document.createElement('details'); d.className = 'ev thinking';
       d.innerHTML = `<summary>${tr('app.chat.thinking')}</summary><div style="white-space:pre-wrap;margin-top:6px">${esc(ev.text)}</div>`;
@@ -1200,7 +1204,7 @@ function evNode(ev) {
       div.textContent = bg ? tr('app.chat.bgStderr', { id: bg[1] }) : i18n.tx(ev);
       break;
     }
-    case 'system': div.className = 'ev system'; div.textContent = 'ℹ ' + i18n.tx(ev); break;
+    case 'system': div.className = 'ev system'; div.textContent = 'ℹ ' + i18n.tx(ev); if (ev.agentSwitch) state.evAgent = ev.agentSwitch.to; break;
     default: return null;
   }
   return div;
@@ -1240,14 +1244,17 @@ function statusLine(t) {
     <span class="sp"></span>${rlMini('sl')}`;
 }
 
-async function openChat(id) {
+// reuse = redraw from the cached payload of the open chat (language switch) instead of fetching it again
+async function openChat(id, reuse) {
   state.openTask = id;
   state.toolNodes.clear();
   state.live = '';
   state.lastPrompts = [];
   state.att.chat = [];
-  const t = await api('/api/tasks/' + id);
+  const c = reuse && state.chatCache && state.chatCache.id === id ? state.chatCache : null;
+  const t = c ? { ...c.t, ...state.tasks.get(id), events: c.t.events } : await api('/api/tasks/' + id);
   if (state.openTask !== id) return;
+  state.chatCache = { id, t, hist: c ? c.hist : null }; // live events are appended to it by the stream handler
   markSeen(id);
   setChatHash(t); setDocTitle(); filesCtx();
   const chat = $('#chat');
@@ -1300,6 +1307,9 @@ async function openChat(id) {
   const tl = $('#timeline');
   tl.innerHTML = '';
   bindTimelineScroll(tl);
+  // the chat may have switched agents: replies are labelled with the agent active at that point
+  const sw = (t.events || []).find(e => e.agentSwitch);
+  state.evAgent = sw ? sw.agentSwitch.from : (t.agent || 'claude');
   // older server didn't store progress → rebuild it from the event history of the latest turn
   if (t.steps === undefined && t.events) {
     let lastUser = -1;
@@ -1317,8 +1327,9 @@ async function openChat(id) {
   renderProg(t);
   if (t.historySessionId) {
     try {
-      const hist = await api(`/api/sessions/${t.historySessionId}/transcript?before=${t.createdAt}`);
+      const hist = state.chatCache.hist || await api(`/api/sessions/${t.historySessionId}/transcript?before=${t.createdAt}`);
       if (state.openTask !== id) return;
+      state.chatCache.hist = hist;
       if (hist.length) {
         const dv = document.createElement('div'); dv.className = 'divider'; dv.textContent = hist.length >= 500 ? tr('app.chat.histLatest') : tr('app.chat.histN', { n: hist.length }); tl.appendChild(dv);
         for (const ev of hist) { const n = evNode(ev); if (n) tl.appendChild(n); }
@@ -1576,6 +1587,7 @@ function connectStream() {
         if (!isActive(msg.task)) { state.live = ''; renderLive(); }
       }
     } else if (msg.type === 'event' && msg.id === state.openTask) {
+      if (state.chatCache && state.chatCache.id === msg.id) state.chatCache.t.events.push(msg.ev);
       if (msg.ev.k === 'text') { state.live = ''; renderLive(); }
       appendToTimeline(evNode(msg.ev));
     } else if (msg.type === 'delta' && msg.id === state.openTask) {
@@ -2115,6 +2127,42 @@ async function openFolderPicker(start) {
   });
   go(st.dir);
 }
+
+// ---------- language switch in place (i18n.setLang → 'langchange') ----------
+// Labels captured in constants at load are rebuilt, then everything visible is re-rendered with the user's
+// in-progress state kept (draft, attachments, scroll, live text, unsaved file).
+function relabelConstants() {
+  for (const k of Object.keys(STATUS)) STATUS[k].label = tr('app.status.' + k);
+  FAMILIES.find(f => f.key === 'Other').label = tr('app.usage.familyOther');
+  const perm = { default: 'default', '': 'default', auto: 'auto', acceptEdits: 'acceptEdits', plan: 'plan', bypassPermissions: 'bypass', dontAsk: 'dontAsk' };
+  for (const [k, key] of Object.entries(perm)) PERM_MODES[k][0] = tr('app.perm.' + key);
+  RL_WINDOWS[0][1] = tr('app.rl.short5h'); RL_WINDOWS[0][2] = tr('app.rl.fiveHour');
+  RL_WINDOWS[1][1] = tr('app.rl.short7d'); RL_WINDOWS[1][2] = tr('app.rl.weekly');
+  for (const k of Object.keys(SKILL_SRC)) SKILL_SRC[k] = [tr('app.skill.src.' + k), tr('app.skill.src.' + k + 'Tip')];
+  for (const r of SKILL_ROLES) r[1] = tr('app.skill.role.' + (r[0] || 'all'));
+}
+async function rerenderChat() {
+  const id = state.openTask, ta = $('#followText'), tl = $('#timeline'), rs = $('#railSearch');
+  const keep = { draft: ta ? ta.value : '', att: state.att.chat, live: state.live, rail: rs ? rs.value : '',
+    scroll: tl && !atBottom(tl) ? tl.scrollTop : null };
+  $('#chat').innerHTML = ''; // the rail head is only built when #chatMain is missing
+  await openChat(id, true);
+  if (state.openTask !== id) return;
+  const ta2 = $('#followText');
+  if (ta2 && keep.draft) { ta2.value = keep.draft; ta2.dispatchEvent(new Event('input')); }
+  state.att.chat = keep.att; renderAtt('chat');
+  if (keep.rail && $('#railSearch')) { $('#railSearch').value = keep.rail; renderRail(); }
+  if (keep.live) { state.live = keep.live; renderLive(); }
+  if (keep.scroll !== null && $('#timeline')) { $('#timeline').scrollTop = keep.scroll; state.follow = false; }
+}
+window.addEventListener('langchange', e => {
+  relabelConstants();
+  if (!state.overview) return;
+  renderCliVersion(); applyLayout(); renderWsBtn(); renderRl(); renderStats(); renderSidebar(); render();
+  if (!$('#composeOverlay').hidden) { applyComposeAgent(); renderSkillPicker(); renderPluginPicker(); renderAtt('compose'); }
+  for (const sel of $$('select')) if (sel._sync) sel._sync();
+  if (state.openTask) e.detail.wait.push(rerenderChat());
+});
 
 (async function init() {
   try {

@@ -14,6 +14,16 @@ const fx = {
   preview: false,
 };
 const FX_MAX_ROWS = 4000;
+// language switched in place → redraw the panel, keeping unsaved text in the editor
+window.addEventListener('langchange', () => {
+  filesBtn();
+  if (layout.files === 'off' || !$('#fxEditor')) return;
+  const ta = $('#fxText');
+  const st = ta ? { v: ta.value, s: ta.scrollTop, a: ta.selectionStart, b: ta.selectionEnd } : null;
+  renderFiles();
+  const t2 = $('#fxText');
+  if (st && t2) { t2.value = st.v; t2.scrollTop = st.s; t2.setSelectionRange(st.a, st.b); }
+});
 const fxKey = (root, rel) => root + '\u0000' + rel;
 
 // project to show: open chat → its project; else the project selected in the left column; else the workspace's first project

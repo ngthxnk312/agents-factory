@@ -1,16 +1,19 @@
 'use strict';
-// Switch a chat to another agent (e.g. Claude → Antigravity). Sessions are not portable between CLIs, so the server
-// starts a new chat with the target agent and sends it a context brief of this one; both chats link to each other.
+// Switch the agent of the open chat (e.g. Claude → Antigravity) without leaving it. Sessions are not portable between
+// CLIs, so the new agent starts a fresh session and gets a context brief of the chat — or nothing, when the user clears
+// the context. Picking the current agent with "clear" is a /clear that keeps the same chat.
 // Uses app.js globals at call time (state, api, esc, $, modalShell, openChat, agentDef, permInfo, toast, isActive).
 
 function handoffDialog(task) {
-  const agents = ((state.overview && state.overview.agents) || []).filter(a => a.key !== (task.agent || 'claude') && a.available !== false);
+  const cur = task.agent || 'claude';
+  const agents = ((state.overview && state.overview.agents) || []).filter(a => a.available !== false);
   if (!agents.length) return toast(t('handoff.noAgents'), 'info');
-  const st = { agent: agents[0].key };
+  const st = { agent: (agents.find(a => a.key !== cur) || agents[0]).key, clear: false };
   const { wrap, close } = modalShell(`
     <div class="modal-head"><h2>⇄ ${esc(t('handoff.title'))}</h2><button type="button" class="icon-btn" data-x aria-label="${esc(t('handoff.close'))}">✕</button></div>
     <p class="hint">${esc(t('handoff.explain', { from: agentDef(task.agent).label }))}</p>
     <div class="field"><span>${esc(t('handoff.target'))}</span><div class="chips" id="hoAgents"></div></div>
+    <div class="field"><span>${esc(t('handoff.context'))}</span><div class="chips" id="hoCtx"></div></div>
     <div class="grid3">
       <label class="field"><span>${esc(t('handoff.model'))}</span><select id="hoModel"></select></label>
       <label class="field"><span>${esc(t('handoff.mode'))}</span><select id="hoMode"></select></label>
@@ -24,22 +27,34 @@ function handoffDialog(task) {
     </div>`, 'ho-modal');
   const $w = s => wrap.querySelector(s);
   const draw = () => {
-    $w('#hoAgents').innerHTML = agents.map(a => `<button type="button" class="chip agent-chip ${a.key === st.agent ? 'on' : ''}" data-hoagent="${esc(a.key)}" style="--ac:${esc(a.color)}" data-noicon>${esc(a.icon)} ${esc(a.label)}</button>`).join('');
+    $w('#hoAgents').innerHTML = agents.map(a => `<button type="button" class="chip agent-chip ${a.key === st.agent ? 'on' : ''}" data-hoagent="${esc(a.key)}" style="--ac:${esc(a.color)}" data-noicon>${esc(a.icon)} ${esc(a.label)}${a.key === cur ? ' · ' + esc(t('handoff.current')) : ''}</button>`).join('');
+    const same = st.agent === cur; // same agent → only "clear" makes sense
+    if (same) st.clear = true;
+    $w('#hoCtx').innerHTML = [[false, 'handoff.keep'], [true, 'handoff.clear']].map(([v, k]) =>
+      `<button type="button" class="chip ${st.clear === v ? 'on' : ''}" data-hoclear="${v}" ${same && !v ? 'disabled' : ''} title="${esc(t(k + 'Tip'))}">${esc(t(k))}</button>`).join('');
+    $w('.modal-foot .hint').textContent = t(st.clear ? 'handoff.footClear' : 'handoff.foot');
+    $w('#hoNote').placeholder = t(st.clear ? 'handoff.notePlaceholderClear' : 'handoff.notePlaceholder');
+    $w('.modal-foot .primary').textContent = (same ? '↺ ' : '⇄ ') + t(same ? 'handoff.submitClear' : 'handoff.submit');
     const ag = agentDef(st.agent);
     $w('#hoModel').innerHTML = `<option value="">${esc(t('handoff.defaultModel'))}</option>` + (ag.models || []).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
     const modes = ag.modes && ag.modes.length ? ag.modes : [''];
+    if (same && task.model) $w('#hoModel').value = task.model;
     $w('#hoMode').innerHTML = modes.map(m => `<option value="${esc(m)}" ${m === (task.permissionMode || '') ? 'selected' : ''}>${esc(permInfo(m)[0])}</option>`).join('');
     for (const s of wrap.querySelectorAll('select')) if (s._sync) s._sync();
   };
-  wrap.addEventListener('click', e => { const b = e.target.closest('[data-hoagent]'); if (b) { st.agent = b.dataset.hoagent; draw(); } });
+  wrap.addEventListener('click', e => {
+    const b = e.target.closest('[data-hoagent]');
+    if (b) { st.agent = b.dataset.hoagent; st.clear = false; return draw(); }
+    const c = e.target.closest('[data-hoclear]');
+    if (c && !c.disabled) { st.clear = c.dataset.hoclear === 'true'; draw(); }
+  });
   wrap.querySelector('form').addEventListener('submit', async e => {
     e.preventDefault();
     try {
-      const nt = await api(`/api/tasks/${task.id}/handoff`, { method: 'POST', body: { agent: st.agent, model: $w('#hoModel').value, permissionMode: $w('#hoMode').value, note: $w('#hoNote').value } });
+      const nt = await api(`/api/tasks/${task.id}/handoff`, { method: 'POST', body: { agent: st.agent, clear: st.clear, model: $w('#hoModel').value, permissionMode: $w('#hoMode').value, note: $w('#hoNote').value } });
       close();
       state.tasks.set(nt.id, nt);
-      toast(t('handoff.done', { agent: agentDef(st.agent).label }), 'ok');
-      openChat(nt.id);
+      toast(t(st.agent === cur ? 'handoff.doneClear' : 'handoff.done', { agent: agentDef(st.agent).label }), 'ok');
     } catch (err) { toast(err.message, true); }
   });
   draw();

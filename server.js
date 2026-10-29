@@ -473,11 +473,20 @@ function loadBgAgents() {
 function refreshBgAgents() { if (Date.now() - bgAgents.at >= 30000) loadBgAgents(); }
 const bgFresh = maxAge => (Date.now() - bgAgents.at < maxAge ? Promise.resolve(bgAgents.map) : loadBgAgents());
 const sessionCost = s => Object.values(s.runs || {}).reduce((a, b) => a + b, 0);
+// Every CLI session a Hub chat has gone through: the session it was opened from (unless forked — the original then
+// lives on separately), the ones left behind by /clear or an agent switch, and the current one. One chat = one entry.
+const sessionChain = t => [...new Set([t.fork ? null : t.historySessionId, ...(t.pastSessions || []).map(x => x.sessionId), t.sessionId].filter(Boolean))];
+const taskOfSession = id => [...tasks.values()].find(t => sessionChain(t).includes(id));
+// a chat moved on to a new session id (/clear in the CLI, agent switch …) → keep the old one in the chain
+function noteSessionChange(t, id) {
+  if (t.sessionId && id && id !== t.sessionId && !(t.pastSessions || []).some(x => x.sessionId === t.sessionId))
+    t.pastSessions = [...(t.pastSessions || []), { agent: t.agent || 'claude', sessionId: t.sessionId, until: Date.now() }];
+}
 function sessionList(project, lang = 'vi') {
   refreshBgAgents();
-  const live = new Set([...tasks.values()].filter(t => procs.has(t.id)).map(t => t.sessionId));
+  const live = new Set([...tasks.values()].filter(t => procs.has(t.id)).flatMap(sessionChain));
   const names = hubCfg().names;
-  return Object.values(scanCache)
+  const list = Object.values(scanCache)
     .filter(s => s.cwd && (s.prompts > 0 || s.tokens.out > 0) && (!project || s.cwd === project))
     .map(s => ({
       id: s.id, cwd: s.cwd, project: path.basename(s.cwd), projectDisplay: tilde(s.cwd),
@@ -485,10 +494,35 @@ function sessionList(project, lang = 'vi') {
       firstPrompt: s.firstPrompt, firstAt: s.firstAt, lastAt: s.lastAt || s.mtime, prompts: s.prompts,
       tokens: s.tokens, cost: sessionCost(s), models: s.models, size: s.size,
       recentlyActive: Date.now() - s.mtime < 120000, inHub: live.has(s.id),
-      hubTask: ([...tasks.values()].find(t => t.sessionId === s.id) || {}).id || null,
+      hubTask: (taskOfSession(s.id) || {}).id || null,
       bg: bgAgents.map[s.id] || null,
     }))
     .sort((a, b) => b.lastAt - a.lastAt);
+  return mergeChains(list);
+}
+// Sessions of the same Hub chat collapse into the most recent one, with totals summed and the others in `parts`
+function mergeChains(list) {
+  const byTask = new Map();
+  for (const x of list) if (x.hubTask) { if (!byTask.has(x.hubTask)) byTask.set(x.hubTask, []); byTask.get(x.hubTask).push(x); }
+  const drop = new Set();
+  for (const group of byTask.values()) {
+    if (group.length < 2) continue;
+    const [head, ...rest] = group; // list is newest first
+    const t = tasks.get(head.hubTask);
+    head.parts = group.map(x => ({ id: x.id, title: x.title, firstAt: x.firstAt, lastAt: x.lastAt, prompts: x.prompts, size: x.size, cost: x.cost }))
+      .sort((a, b) => (a.firstAt || a.lastAt) - (b.firstAt || b.lastAt));
+    head.originId = head.parts[0].id; // shown as the session's ID; `id` stays the live file (resume, terminal)
+    head.title = t ? t.title : head.title;
+    for (const x of rest) {
+      drop.add(x);
+      head.prompts += x.prompts; head.size += x.size || 0; head.cost += x.cost;
+      for (const k of Object.keys(head.tokens)) head.tokens[k] = (head.tokens[k] || 0) + (x.tokens[k] || 0);
+      for (const [m, n] of Object.entries(x.models || {})) head.models[m] = (head.models[m] || 0) + n;
+      head.firstAt = Math.min(head.firstAt || Infinity, x.firstAt || Infinity);
+      head.recentlyActive = head.recentlyActive || x.recentlyActive; head.inHub = head.inHub || x.inHub;
+    }
+  }
+  return list.filter(x => !drop.has(x));
 }
 const findSession = id => Object.values(scanCache).find(s => s.id === id);
 
@@ -608,6 +642,10 @@ function usageReport(days = 30) {
   const projects = {};
   const perSession = [];
   let totalCost = 0;
+  // a Hub chat is one session even when the CLI split it into several files (/clear, agent switch)
+  const list = Object.fromEntries(sessionList().map(x => [x.id, x]));
+  const rowOf = Object.fromEntries(Object.values(list).flatMap(x => [[x.id, x.id], ...(x.parts || []).map(q => [q.id, x.id])]));
+  const counted = new Set();
   for (const s of sessions) {
     const tok = { in: 0, out: 0, cr: 0, cw: 0 };
     for (const [day, fams] of Object.entries(s.days || {})) {
@@ -621,11 +659,13 @@ function usageReport(days = 30) {
     if (!tok.out && !tok.in && !tok.cr && !cost) continue;
     totalCost += cost;
     const p = (projects[s.cwd] = projects[s.cwd] || { path: s.cwd, name: path.basename(s.cwd), display: tilde(s.cwd), sessions: 0, out: 0, in: 0, cr: 0, cw: 0, cost: 0 });
-    p.sessions++; p.cost += cost;
+    const row = rowOf[s.id] || s.id;
+    if (!counted.has(row)) { counted.add(row); p.sessions++; }
+    p.cost += cost;
     for (const k in tok) p[k] += tok[k];
-    perSession.push({ id: s.id, tok, cost });
+    const prev = perSession.find(x => x.id === row);
+    if (prev) { for (const k in tok) prev.tok[k] += tok[k]; prev.cost += cost; } else perSession.push({ id: row, tok, cost });
   }
-  const list = Object.fromEntries(sessionList().map(x => [x.id, x]));
   return {
     scannedAt: lastScanAt, scanning, rateLimit: curLimit(), rangeDays: days,
     accounts: accountUsage(sessions, keys),
@@ -745,6 +785,7 @@ function handleLine(t, line) {
     return;
   }
   if (m.type === 'system' && m.subtype === 'init') {
+    noteSessionChange(t, m.session_id);
     updateTask(t, { sessionId: m.session_id, activeModel: m.model });
     if (Array.isArray(m.slash_commands) && m.slash_commands.length) { slashByProject[t.projectPath] = m.slash_commands; slashByProject[''] = m.slash_commands; writeJSON(SLASH_FILE, slashByProject); }
     // the CLI emits init every turn; only show it again when model / MCP / permissions change
@@ -952,7 +993,7 @@ function deliverOneShot(t, msg) {
   };
   const h = {
     session(id, model, extra = {}) {
-      if (id && id !== t.sessionId) updateTask(t, { sessionId: id });
+      if (id && id !== t.sessionId) { noteSessionChange(t, id); updateTask(t, { sessionId: id }); }
       const key = JSON.stringify([t.agent, model]);
       if (key !== t.lastInitKey) { t.lastInitKey = key; pushEvent(t, { k: 'init', agent: t.agent, model: model || t.model || a.label, permissionMode: t.permissionMode, tools: extra.tools || 0, mcp: [], plugins: [] }); }
     },
@@ -1089,11 +1130,17 @@ function schedule() {
   }
 }
 
-// ---------- Agent handoff: continue a chat with another agent (Claude → agy, …) ----------
-// CLI sessions are not portable between agents, so the new agent gets a compact brief of the old chat.
+// ---------- Agent switch: continue a chat with another agent (Claude → agy, …) in the same chat ----------
+// CLI sessions are not portable between agents, so the new agent starts a fresh session and gets a compact brief
+// of the chat so far — or nothing at all when the user asks to clear the context.
 async function handoffBrief(t, toAgent, note) {
   let evs = readEvents(t.id);
-  if (t.historySessionId) { try { evs = [...(await sessionTranscript(t.historySessionId, t.createdAt)), ...evs]; } catch { /* history unavailable */ } }
+  const reset = evs.map(e => !!(e.agentSwitch && e.agentSwitch.clear)).lastIndexOf(true);
+  if (reset >= 0) evs = evs.slice(reset + 1); // context was cleared → only what came after
+  else if (t.historySessionId) { try { evs = [...(await sessionTranscript(t.historySessionId, t.createdAt)), ...evs]; } catch { /* history unavailable */ } }
+  // who said what: the chat may have passed through several agents already
+  const firstSwitch = evs.find(e => e.agentSwitch);
+  let speaker = firstSwitch ? firstSwitch.agentSwitch.from : (t.agent || 'claude');
   const firstUser = evs.find(e => e.k === 'user');
   const files = new Map();
   for (const e of evs) if (e.k === 'tool' && e.input) {
@@ -1103,9 +1150,13 @@ async function handoffBrief(t, toAgent, note) {
   // most recent dialogue, newest last, within a size budget
   const turns = [];
   let budget = 14000;
-  for (const e of [...evs].reverse()) {
+  const lines = [];
+  for (const e of evs) {
+    if (e.agentSwitch) { speaker = e.agentSwitch.to; continue; }
     if (e.k !== 'user' && e.k !== 'text') continue;
-    const line = `**${e.k === 'user' ? 'User' : AGENTS[t.agent || 'claude'].label}:** ${clip(String(e.text || ''), 1800)}`;
+    lines.push(`**${e.k === 'user' ? 'User' : (AGENTS[speaker] || { label: speaker }).label}:** ${clip(String(e.text || ''), 1800)}`);
+  }
+  for (const line of lines.reverse()) {
     if (budget - line.length < 0) break;
     budget -= line.length; turns.unshift(line);
   }
@@ -1122,6 +1173,36 @@ async function handoffBrief(t, toAgent, note) {
     turns.length && `## Recent conversation (oldest first)\n${turns.join('\n\n')}`,
     `## What to do now\n${note ? note : 'First summarise in a few lines where the work stands, then continue with the next step. Ask before doing anything destructive.'}`,
   ].filter(Boolean).join('\n\n');
+}
+
+// Stop the chat's long-lived claude process (if any) and run fn once it has exited
+function afterProcExit(t, fn) {
+  const e = procs.get(t.id);
+  if (!e) return fn();
+  clearTimeout(e.idleTimer);
+  e.restart = fn;
+  e.child.stdin.end();
+  setTimeout(() => procs.has(t.id) && e.child.kill('SIGTERM'), 3000);
+}
+
+// Switch the agent of an existing chat. clear → the new agent starts with no context; otherwise it gets the brief.
+async function switchAgent(t, b) {
+  const from = t.agent || 'claude', to = b.agent, clear = !!b.clear || from === to;
+  const note = String(b.note || '').trim();
+  const brief = clear ? null : await handoffBrief(t, to, note);
+  await new Promise(r => afterProcExit(t, r));
+  const past = [...(t.pastSessions || [])];
+  if (t.sessionId) past.push({ agent: from, sessionId: t.sessionId, until: Date.now() });
+  updateTask(t, {
+    agent: to, model: b.model || null, effort: from === to ? t.effort : null, permissionMode: b.permissionMode ?? t.permissionMode,
+    sessionId: null, fork: false, forked: false, lastInitKey: null, skillSent: false, bgConflict: null,
+    activeModel: null, context: 0, contextWindow: null, pastSessions: past,
+    costBase: (t.costBase || 0) + (t.costLast || 0), costLast: 0, // the next claude session counts its cost from 0
+  });
+  const fromLabel = AGENTS[from] ? AGENTS[from].label : from;
+  pushEvent(t, { k: 'system', ...keyedText(from === to ? 'server.handoff.cleared' : clear ? 'server.handoff.switchedClear' : 'server.handoff.switched', { from: fromLabel, agent: AGENTS[to].label }), agentSwitch: { from, to, clear } });
+  if (brief) sendMessage(t, { text: brief, displayText: tr('vi', 'server.handoff.briefShown', { agent: fromLabel }), displayKey: 'server.handoff.briefShown', displayParams: { agent: fromLabel } });
+  else if (note) sendMessage(t, { text: note });
 }
 
 function newTask(p, body, lang = 'vi') {
@@ -1398,7 +1479,7 @@ const server = http.createServer(async (req, res) => {
       if (sm[2] === 'transcript') return send(res, 200, await sessionTranscript(s.id, Number(url.searchParams.get('before')) || 0));
       if (req.method === 'POST') {
         const b = await body(req);
-        const existing = [...tasks.values()].find(t => t.historySessionId === s.id && !t.fork);
+        const existing = taskOfSession(s.id);
         if (existing && !b.fork) return send(res, 200, publicTask(existing));
         if (!isDir(s.cwd)) return fail(400, 'server.session.dirGone');
         const t = newTask(s.cwd, { title: sessTitle(s, undefined, lang), resumeSessionId: s.id, fork: !!b.fork, permissionMode: b.permissionMode || 'auto' }, lang);
@@ -1476,14 +1557,8 @@ const server = http.createServer(async (req, res) => {
         const b = await body(req);
         if (!AGENTS[b.agent]) return fail(400, 'server.handoff.unknownAgent', { agent: String(b.agent || '') });
         if (isActiveTask(t)) return fail(409, 'server.handoff.busy');
-        const brief = await handoffBrief(t, b.agent, String(b.note || '').trim());
-        const nt = newTask(t.projectPath, { agent: b.agent, model: b.model || null, permissionMode: b.permissionMode ?? t.permissionMode, skill: t.skill, title: `${t.title} → ${AGENTS[b.agent].label}` }, lang);
-        nt.handoffFrom = t.id;
-        pushEvent(nt, { k: 'system', ...keyedText('server.handoff.from', { agent: AGENTS[t.agent || 'claude'].label, title: t.title }), link: t.id });
-        sendMessage(nt, { text: brief, displayText: tr('vi', 'server.handoff.briefShown', { agent: AGENTS[t.agent || 'claude'].label }), displayKey: 'server.handoff.briefShown', displayParams: { agent: AGENTS[t.agent || 'claude'].label } });
-        pushEvent(t, { k: 'system', ...keyedText('server.handoff.to', { agent: AGENTS[b.agent].label }), link: nt.id });
-        updateTask(t, { handoffTo: nt.id });
-        return send(res, 200, publicTask(nt));
+        await switchAgent(t, b);
+        return send(res, 200, publicTask(t));
       }
       if (action === 'rename' && req.method === 'POST') {
         const name = String((await body(req)).name || '').trim().slice(0, 120);
@@ -1594,10 +1669,13 @@ function moveToTrash(f) {
 async function deleteSessions(ids, lang = 'vi') {
   const out = { deleted: 0, freed: 0, chats: 0, skipped: [] };
   const skip = (id, key) => out.skipped.push({ id, reason: tr(lang, key), reasonKey: key });
+  // deleting a chat's entry deletes every session in its chain
+  const asked = new Set(ids);
+  ids = [...new Set(ids.flatMap(id => { const t = taskOfSession(id); return t ? [id, ...sessionChain(t)] : [id]; }))];
   for (const id of ids) {
     const s = findSession(id);
-    if (!s) { skip(id, 'server.cleanup.gone'); continue; }
-    const linked = [...tasks.values()].filter(t => t.sessionId === id || t.historySessionId === id);
+    if (!s) { if (asked.has(id)) skip(id, 'server.cleanup.gone'); continue; } // older parts of a chain may be gone already
+    const linked = [...tasks.values()].filter(t => sessionChain(t).includes(id) || t.sessionId === id || t.historySessionId === id);
     if (linked.some(t => procs.has(t.id) || isActiveTask(t))) { skip(id, 'server.cleanup.runningInHub'); continue; }
     let mtime = 0;
     try { mtime = fs.statSync(s.file).mtimeMs; } catch { /* already gone */ }

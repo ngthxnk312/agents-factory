@@ -2,7 +2,7 @@
 // "/" commands in the chat input like the terminal: type / to show the list (CLI commands, skills, plugins, project commands).
 // Some commands are handled by Agents Factory itself (stop, terminal, rename, change model…); the rest are sent verbatim to Claude Code.
 
-const HUB_CMDS = Object.fromEntries(['stop', 'rename', 'model', 'terminal', 'files', 'new', 'help'].map(k => [k, t('slash.hub.' + k)]));
+const HUB_CMDS = Object.fromEntries(['clear', 'stop', 'rename', 'model', 'terminal', 'files', 'new', 'help'].map(k => [k, t('slash.hub.' + k)]));
 const CMD_DESC = Object.fromEntries([
   'compact', 'clear', 'context', 'usage', 'cost', 'init', 'review', 'code-review', 'security-review', 'simplify',
   'recap', 'insights', 'effort', 'debug', 'mcp', 'agents', 'config', 'doctor', 'output-style',
@@ -12,6 +12,11 @@ const CMD_DESC = Object.fromEntries([
 const TTY_ONLY = new Set(['config', 'mcp', 'agents', 'doctor', 'color', 'output-style', 'focus', 'heapdump', 'import', 'team-onboarding', 'auto-mode-setup', 'list-agents']);
 
 const slash = { list: [], project: null, pick: 0, shown: [] };
+window.addEventListener('langchange', () => {
+  for (const k of Object.keys(HUB_CMDS)) HUB_CMDS[k] = t('slash.hub.' + k);
+  for (const k of Object.keys(CMD_DESC)) CMD_DESC[k] = t('slash.cmd.' + k);
+  slash.project = null; // rebuild the list with the new descriptions on next use
+});
 async function loadSlash(project) {
   const ag = (state.tasks.get(state.openTask) || {}).agent || 'claude';
   const key = project + '|' + ag;
@@ -72,6 +77,13 @@ async function runHubCommand(text) {
   const [, name, arg] = m;
   const task = state.tasks.get(state.openTask);
   switch (name) {
+    // /clear = fresh session for the same agent, in the same chat (anything after /clear is sent as the first message)
+    case 'clear': {
+      if (isActive(task)) { toast(t('handoff.busy'), true); return 'keep'; }
+      const nt = await api(`/api/tasks/${task.id}/handoff`, { method: 'POST', body: { agent: task.agent || 'claude', clear: true, model: task.model || '', permissionMode: task.permissionMode || '', note: arg.trim() } });
+      state.tasks.set(nt.id, nt);
+      toast(t('handoff.doneClear', { agent: agentDef(nt.agent).label }), 'ok'); break;
+    }
     case 'stop': await api(`/api/tasks/${task.id}/stop`, { method: 'POST' }); toast(t('slash.toast.stopSent')); break;
     case 'terminal': await api(`/api/tasks/${task.id}/terminal`, { method: 'POST' }); toast(t('slash.toast.terminalOpened')); break;
     case 'files': toggleFiles(); break;

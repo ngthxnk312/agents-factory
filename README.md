@@ -1,12 +1,20 @@
+<div align="center">
+
+<img src="public/img/logo.svg" width="128" height="128" alt="Agents Factory" />
+
 # Agents Factory
 
-A local control room for AI coding agents. Send work to Claude Code, Antigravity, Codex, Gemini CLI or any CLI agent across every project on your machine, then watch them run, review the results and keep going — from one browser tab.
+**A local control room for AI coding agents.**
+
+Send work to Claude Code, Antigravity, Codex, Gemini CLI or any CLI agent across every project on your machine, then watch them run, review the results and keep going — from one browser tab.
+
+[Vietnamese (Tiếng Việt)](README_vi.md) · [PayPal Donate](https://paypal.me/ngthxnk312)
+
+</div>
 
 - **Zero dependencies.** Node.js ≥ 20 and the CLI of each agent you want to use (`claude`, `agy`, `codex`, `gemini`, …). No `npm install`, no build step.
 - **Local only.** The server listens on `127.0.0.1` and rejects foreign origins, because it can run agents with access to your files.
 - **SDLC-aware.** Ships with a set of fallback SDLC skills (ideate → plan → design → build → verify → ship → operate) that defer to your own project and machine skills.
-
-> Vietnamese version: [README_vi.md](README_vi.md)
 
 ```bash
 ./install.sh          # first run on a machine: config + autostart service + app launcher
@@ -101,4 +109,6 @@ Read [AGENTS.md](AGENTS.md) ([Vietnamese](AGENTS_vi.md)) before changing code: a
 
 ## Author
 
-ngthxnk312
+**ngthxnk312**
+
+[![Donate with PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/ngthxnk312)

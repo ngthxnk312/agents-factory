@@ -1,12 +1,20 @@
+<div align="center">
+
+<img src="public/img/logo.svg" width="128" height="128" alt="Agents Factory" />
+
 # Agents Factory
 
-Phòng điều khiển cục bộ cho các agent AI viết code. Giao việc cho Claude Code, Antigravity, Codex, Gemini CLI hoặc bất kỳ agent dạng CLI nào, ở mọi project trên máy. Sau đó theo dõi agent chạy, xem kết quả và làm tiếp, tất cả trong một tab trình duyệt.
+**Phòng điều khiển cục bộ cho các agent AI viết code.**
+
+Giao việc cho Claude Code, Antigravity, Codex, Gemini CLI hoặc bất kỳ agent dạng CLI nào, ở mọi project trên máy. Sau đó theo dõi agent chạy, xem kết quả và làm tiếp, tất cả trong một tab trình duyệt.
+
+[English (Bản chính)](README.md) · [Ủng hộ qua PayPal](https://paypal.me/ngthxnk312)
+
+</div>
 
 - **Không phụ thuộc thư viện ngoài.** Chỉ cần Node.js ≥ 20 và CLI của từng agent muốn dùng (`claude`, `agy`, `codex`, `gemini`…). Không cần `npm install`, không cần build.
 - **Chỉ chạy cục bộ.** Server chỉ nghe ở `127.0.0.1` và chặn request từ trang khác, vì nó có quyền chạy agent đụng vào file trên máy.
 - **Bám quy trình SDLC.** Có sẵn bộ skill SDLC dự phòng (ý tưởng → kế hoạch → thiết kế → code → kiểm thử → phát hành → vận hành). Bộ này luôn nhường cho skill riêng của project và của máy.
-
-> Bản tiếng Anh (bản chính): [README.md](README.md)
 
 ```bash
 ./install.sh          # lần đầu trên một máy: cấu hình + dịch vụ tự chạy + biểu tượng menu
@@ -114,4 +122,6 @@ tail -f hub.log                           # xem log
 
 ## Tác giả
 
-ngthxnk312
+**ngthxnk312**
+
+[![Donate with PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/ngthxnk312)

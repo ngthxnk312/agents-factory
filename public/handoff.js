@@ -27,7 +27,7 @@ function handoffDialog(task) {
     </div>`, 'ho-modal');
   const $w = s => wrap.querySelector(s);
   const draw = () => {
-    $w('#hoAgents').innerHTML = agents.map(a => `<button type="button" class="chip agent-chip ${a.key === st.agent ? 'on' : ''}" data-hoagent="${esc(a.key)}" style="--ac:${esc(a.color)}" data-noicon>${esc(a.icon)} ${esc(a.label)}${a.key === cur ? ' · ' + esc(t('handoff.current')) : ''}</button>`).join('');
+    $w('#hoAgents').innerHTML = agents.map(a => `<button type="button" class="chip agent-chip ${a.key === st.agent ? 'on' : ''}" data-hoagent="${esc(a.key)}" style="--ac:${esc(a.color)}">${esc(a.icon)} ${esc(a.label)}${a.key === cur ? ' · ' + esc(t('handoff.current')) : ''}</button>`).join('');
     const same = st.agent === cur; // same agent → only "clear" makes sense
     if (same) st.clear = true;
     $w('#hoCtx').innerHTML = [[false, 'handoff.keep'], [true, 'handoff.clear']].map(([v, k]) =>
@@ -36,10 +36,14 @@ function handoffDialog(task) {
     $w('#hoNote').placeholder = t(st.clear ? 'handoff.notePlaceholderClear' : 'handoff.notePlaceholder');
     $w('.modal-foot .primary').textContent = (same ? '↺ ' : '⇄ ') + t(same ? 'handoff.submitClear' : 'handoff.submit');
     const ag = agentDef(st.agent);
+    const prevAgent = $w('#hoModel').dataset.agent, prevModel = $w('#hoModel').value, prevMode = $w('#hoMode').value;
     $w('#hoModel').innerHTML = `<option value="">${esc(t('handoff.defaultModel'))}</option>` + (ag.models || []).map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+    $w('#hoModel').dataset.agent = st.agent;
     const modes = ag.modes && ag.modes.length ? ag.modes : [''];
-    if (same && task.model) $w('#hoModel').value = task.model;
-    $w('#hoMode').innerHTML = modes.map(m => `<option value="${esc(m)}" ${m === (task.permissionMode || '') ? 'selected' : ''}>${esc(permInfo(m)[0])}</option>`).join('');
+    if (prevAgent === st.agent && prevModel && [...$w('#hoModel').options].some(o => o.value === prevModel)) $w('#hoModel').value = prevModel;
+    else if (same && task.model) $w('#hoModel').value = task.model;
+    const wantMode = prevAgent === st.agent && modes.includes(prevMode) ? prevMode : (task.permissionMode || '');
+    $w('#hoMode').innerHTML = modes.map(m => `<option value="${esc(m)}" ${m === wantMode ? 'selected' : ''}>${esc(permInfo(m)[0])}</option>`).join('');
     for (const s of wrap.querySelectorAll('select')) if (s._sync) s._sync();
   };
   wrap.addEventListener('click', e => {

@@ -71,20 +71,21 @@ public/
   bgview.js         Danh sách agent chạy nền (claude --bg) + xem trực tiếp (chỉ đọc)
   nav.js            Ctrl/chuột giữa để mở tab mới; menu chuột phải có thông tin
   resize.js         Kéo để đổi độ rộng cột (lưu trong layout.sizes)
-  img/logo.svg      Logo / favicon / icon ứng dụng
+  img/logo.svg      Logo nhà máy pixel-art / favicon / icon ứng dụng
+  img/vi.svg, en.svg Icon cờ pixel-art cho menu chọn ngôn ngữ
 skills/             Skill SDLC của factory (sdlc-*/SKILL.md). CHỈ LÀ DỰ PHÒNG, xem mục "Skill SDLC"; mục lục ở skills/README.md
 data/               Dữ liệu lúc chạy (không đưa lên git): hub.json, tasks.json, logs/<task>.jsonl, uploads/,
                     sessions-cache.json, ratelimit.json, accounts.json, commands.json
 ```
 
-**Thứ tự nạp script:** `icons.js → i18n.js → ui.js → files.js → slash.js → nav.js → app.js → dashboard.js → bgview.js → resize.js`.
+**Thứ tự nạp script:** `icons.js → i18n.js → ui.js → files.js → slash.js → nav.js → app.js → handoff.js → dashboard.js → bgview.js → resize.js`.
 - Đây là script thường, dùng chung một phạm vi toàn cục.
 - Các file khác dùng biến và hàm cấp cao nhất của `app.js` (`state`, `api`, `esc`, `$`, `$$`, `toast`, `layout`…) **lúc gọi hàm**, không phải lúc nạp. Vì vậy file nào nạp trước `app.js` thì không được gọi chúng ngay khi nạp.
 
 ## Backend (`server.js`)
 
 - **Cấu hình:** `hub.config.json` cho giá trị mặc định; biến môi trường được ưu tiên hơn (`PORT`, `HUB_DATA`, `CLAUDE_BIN`, `CLAUDE_CONFIG_DIR`, `MAX_PARALLEL`, `IDLE_MINUTES`).
-- **Chat Claude:** mỗi chat (task) chạy một tiến trình sống lâu: `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages`, khởi động trong thư mục project. Nhờ vậy CLI tự nạp MCP, plugin, CLAUDE.md và settings của project đó.
+- **Chat Claude:** mỗi chat (task) chạy một tiến trình sống lâu: `claude -p --input-format stream-json --output-format stream-json --verbose --include-partial-messages`, khởi động trong thư mục project. Nhờ vậy CLI tự nạp MCP, plugin, `AGENTS.md` / `CLAUDE.md` và settings của project đó.
   - Tin nhắn đi vào qua stdin dạng JSON từng dòng; `handleLine()` đổi output thành sự kiện.
   - Tiến trình tự đóng khi rảnh quá `IDLE_MINUTES`, lần nhắn sau sẽ mở lại bằng `--resume`.
   - Đổi model, chế độ quyền hoặc plugin cũng khởi động lại tiến trình bằng `--resume`.
@@ -92,13 +93,14 @@ data/               Dữ liệu lúc chạy (không đưa lên git): hub.json, t
 - **Sự kiện:** lưu ở `data/logs/<taskId>.jsonl` và phát qua SSE ở `/api/stream`.
   - Loại tin SSE: `task`, `event`, `delta`, `usage`, `ratelimit`, `removed`, `sessions-updated`, `account`.
   - Loại sự kiện mà `evNode()` hiển thị: `user`, `text`, `thinking`, `init`, `tool`, `tool_result`, `result`, `stderr`, `system`.
-- **Lịch sử phiên:** đọc dần từ `~/.claude/projects/*/*.jsonl`. Vị trí đã đọc được lưu trong `sessions-cache.json`; tăng `SCAN_V` để buộc quét lại từ đầu.
-  - Token được loại trùng theo `message.id`.
+- **Lịch sử phiên & chi phí:** đọc dần từ `~/.claude/projects/*/*.jsonl`, `~/.gemini/antigravity-cli/brain/*`, `~/.codex/sessions/*` và `~/.gemini/tmp/*/chats/*`. Vị trí đã đọc và mtime lưu trong `sessions-cache.json`; tăng `SCAN_V` để buộc quét lại từ đầu.
+  - Token được loại trùng theo ID tin nhắn/bước.
   - Token của subagent lấy từ `<id>/subagents/*.jsonl`.
-- **Tài khoản:** token được tính cho tài khoản đang đăng nhập lúc dùng. Lịch sử đổi tài khoản lưu ở `accounts.json` (lấy từ `oauthAccount` trong `~/.claude.json`). Claude Code không ghi tài khoản vào từng phiên, nên token dùng trước khi bắt đầu theo dõi được xếp vào "chưa rõ".
+  - Chi phí USD của phiên lấy từ `runs` do CLI báo về hoặc ước tính từ số token qua `PRICE_PER_M` / `estimateCost()`.
+- **Tài khoản:** token được tính cho tài khoản đang đăng nhập lúc dùng. Lịch sử đổi tài khoản lưu ở `accounts.json` (lấy từ `~/.claude.json`, `~/.gemini/oauth_creds.json`, `~/.codex/auth.json`). Token dùng trước khi bắt đầu theo dõi được xếp vào "chưa rõ".
 - **Skill SDLC:** `resolveSkills(project)` gộp skill theo thứ tự ưu tiên từ cao xuống thấp:
-  1. skill của project (`<project>/.claude/skills`)
-  2. skill trên máy (`~/.claude/skills`, cho phép thư mục lồng nhau)
+  1. skill của project (`<project>/.agents/skills`, `.agent/skills`, `.claude/skills`, `.codex/skills`, `.gemini/skills`)
+  2. skill trên máy (`~/.agents/skills`, `~/.gemini/antigravity-cli/builtin/skills`, `~/.claude/skills`, `~/.codex/skills`, `~/.gemini/config/skills`, cho phép thư mục lồng nhau)
   3. skill có sẵn hoặc skill plugin được khai báo ở mục `prefer:` của skill factory. Nguồn gồm thư mục `skills/` của các plugin đã cài, và danh sách lệnh "/" mà CLI báo về (lưu ở `commands.json`).
   4. skill `skills/sdlc-*` của factory
 

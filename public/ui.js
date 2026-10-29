@@ -216,8 +216,8 @@
   enhanceAll(document);
 
   // ---------- popup menu from a button (e.g. workspace picker) ----------
-  // items: [{ label, icon, active, hint, onClick, divider, danger }]
-  function popMenu(btn, items) {
+  // items: [{ label, icon, iconHtml, active, hint, onClick, divider, danger }]
+  function popMenu(btn, items, cfg) {
     if (menu && menu.btn === btn) return closeMenu();
     closeMenu(); hideTip();
     const el = document.createElement('div');
@@ -234,11 +234,11 @@
       if (it.section) return `<div class="pm-sec">${escH(it.section)}</div>`;
       acts.push(it);
       return `<div class="csel-opt ${it.active ? 'on' : ''} ${it.danger ? 'danger' : ''}" role="menuitem" data-a="${acts.length - 1}">
-        <span class="pm-ico" aria-hidden="true">${escH(it.icon || '')}</span><span class="pm-lbl">${escH(it.label)}</span>${it.hint ? `<small>${escH(it.hint)}</small>` : ''}</div>`;
+        <span class="pm-ico" aria-hidden="true">${it.iconHtml || escH(it.icon || '')}</span><span class="pm-lbl">${escH(it.label)}</span>${it.hint ? `<small>${escH(it.hint)}</small>` : ''}</div>`;
     }).join('');
     document.body.appendChild(el);
     const r = btn.getBoundingClientRect();
-    el.style.minWidth = Math.max(r.width, 230) + 'px';
+    el.style.minWidth = Math.max(r.width, (cfg && cfg.minWidth) || 230) + 'px';
     el.style.left = Math.max(8, Math.min(r.left, innerWidth - el.offsetWidth - 8)) + 'px';
     // not enough room below → open upwards
     const mh = el.offsetHeight;

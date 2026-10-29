@@ -89,6 +89,22 @@
     'file-code': '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6M10 13l-2 2 2 2M14 17l2-2-2-2"/>',
     rows: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
     globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+    planet: '<circle cx="12" cy="12" r="6"/><path d="M4.2 16.5c-1.8 1.2-2.6 2.5-2 3.3.9 1.3 6.2-.5 11.8-4.1s9.4-7.6 8.5-8.9c-.6-.8-2.2-.6-4.4.4"/>',
+    target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/>',
+    'spark-four': '<path d="M12 2 14.8 9.2 22 12l-7.2 2.8L12 22l-2.8-7.2L2 12l7.2-2.8Z"/>',
+    diamond: '<path d="M12 2 22 12 12 22 2 12Z"/>',
+    radar: '<path d="M19.07 4.93A10 10 0 0 0 6.99 3.34M4 6h.01M2.29 9.62A10 10 0 1 0 21.31 8.35"/><path d="M16.24 7.76A6 6 0 1 0 8.23 16.67M12 18h.01M17.99 11.66A6 6 0 0 1 15.77 16.67"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/>',
+    eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+    bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+    'git-fork': '<circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9M12 12v3"/>',
+    'arrows-exchange': '<path d="m16 3 4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16"/>',
+    'arrows-lr': '<path d="M8 3 4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"/>',
+    'arrow-right': '<path d="M5 12h14M12 5l7 7-7 7"/>',
+    play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+    'circle-empty': '<circle cx="12" cy="12" r="7"/>',
+    command: '<path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/>',
+    bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/>',
+    ruler: '<path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2M11.5 9.5l2-2M8.5 6.5l2-2M17.5 15.5l2-2"/>',
   };
 
   // emoji -> [icon name, color class]
@@ -106,11 +122,16 @@
     '↑': ['arrow-up'], '↓': ['arrow-down'], '↳': ['corner'], '▾': ['chevron'], '●': ['dot'], '🟢': ['dot', 'c-teal'], '＋': ['plus'],
     '✕': ['x'], '💳': ['card'], '🏢': ['building'], '🧪': ['flask'], '🌐': ['globe'], '«': ['panel-close'], '»': ['panel-open'], '☰': ['rows'],
     '🔗': ['link'], '↗': ['external'], '⤢': ['maximize'], '💾': ['save'], '📂': ['folder-open'], '🔄': ['refresh'], '▸': ['chevron-right'],
+    '🪐': ['planet', 'c-violet'], '◎': ['target', 'c-teal'], '✧': ['spark-four', 'c-sky'], '◆': ['diamond'],
+    '🛰': ['radar', 'c-sky'], '🪙': ['coins', 'c-amber'], '🧑‍💻': ['user'], '🧑': ['user'],
+    '⇄': ['arrows-exchange'], '↔': ['arrows-lr'], '→': ['arrow-right'], '↪': ['corner'], '↩': ['undo'],
+    '✔': ['check', 'c-teal'], '✓': ['check', 'c-teal'], '▶': ['play'], '⏵⏵': ['play'], '⏵': ['play'], '○': ['circle-empty'],
+    '⌘': ['command'], '⑂': ['git-fork'], '👁': ['eye'], '🔔': ['bell', 'c-amber'], '🤖': ['bot'], '📐': ['ruler'],
   };
   const keys = Object.keys(MAP).sort((a, b) => b.length - a.length).map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const RE = new RegExp(`(?:${keys.join('|')})\\uFE0F?`, 'gu');
   const RE1 = new RegExp(RE.source, 'u');
-  const SKIP = 'textarea,input,select,option,script,style,pre,code,.pm-title,.pm-sub,.pm-row b,.mode-chip,.md,.ev.user,.ev.stderr,.tsum,.card-last,.mdprev,svg,[data-noicon]';
+  const SKIP = 'textarea,input,select,option,script,style,pre,code,.md,.ev.user,.ev.stderr,.tsum,.card-last,.mdprev,svg,[data-noicon]';
   const SVGNS = 'http://www.w3.org/2000/svg';
 
   // shared sprite

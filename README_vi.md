@@ -17,42 +17,42 @@ node server.js        # hoặc chạy trực tiếp
 ## Tính năng
 
 **Project và workspace**
-- Project tự lấy từ `~/.claude.json`.
+- Project tự lấy từ cấu hình các agent AI trên máy (`~/.claude.json`, `~/.gemini/antigravity-cli`, `~/.codex`, `~/.gemini`).
 - Mở thư mục khác bằng **＋** (có hộp duyệt thư mục). Kéo thả để đổi thứ tự, đánh dấu ★, gỡ khỏi Hub hoặc đưa lại.
 - Gom project thành workspace và chuyển qua lại; mọi màn hình đều lọc theo workspace đang chọn.
 
 **Chat với agent**
-- Mỗi chat Claude là một tiến trình `claude` chạy suốt cuộc chat (stream-json), khởi động trong thư mục project. Nhờ vậy nó nạp đúng MCP, plugin, CLAUDE.md, skill và settings như khi mở bằng terminal.
+- Mỗi chat Claude là một tiến trình `claude` chạy suốt cuộc chat (stream-json), khởi động trong thư mục project. Nhờ vậy nó nạp đúng MCP, plugin, `AGENTS.md` / `CLAUDE.md`, skill và settings như khi mở bằng terminal.
 - Chữ hiện dần theo thời gian thực, và anh nhắn thêm được trong lúc agent đang làm.
 - Agent khác (Antigravity, Codex, Gemini, agent tuỳ ý) chạy một tiến trình cho mỗi tin nhắn, rồi nối tiếp phiên bằng ID phiên.
 - **Đổi agent** (nút ⇄ ở đầu chat): chuyển cuộc chat sang agent khác, ví dụ Claude → Antigravity. Đổi ngay trong chat đang mở, không tạo chat mới. Phiên của các CLI không chuyển qua nhau được, nên agent đích mở phiên mới và — nếu chọn mang theo context — nhận bản bàn giao: yêu cầu gốc, danh sách việc, file đã sửa, các trao đổi gần đây. Chọn "Xoá context" thì agent bắt đầu sạch; chọn chính agent đang dùng + xoá context tương đương /clear mà vẫn giữ chat.
-- Chế độ quyền giống terminal Claude Code: `default`, `⏵⏵ accept edits`, `⏸ plan`, `⏵⏵ auto`, `bypass`. Nhấn **Shift+Tab** trong ô chat để đổi vòng.
+- Chế độ quyền: `default`, `⏵ accept edits`, `⏸ plan`, `⏵ auto`, `bypass`. Nhấn **Shift+Tab** trong ô chat để đổi vòng. Đổi model hoặc chế độ quyền ở thanh dưới được lưu ngay.
 - Gõ `/` trong ô chat để chọn lệnh CLI, skill, plugin và lệnh của Hub (`/stop /rename /model /terminal /files /new /help`).
 - Đính kèm file bằng kéo thả, dán hoặc nút 📎.
 - Link và đường dẫn file trong câu trả lời bấm được. Đường dẫn file mở trong cột File, nhảy tới đúng dòng.
 - Thanh tiến độ hiện bước đang làm, thời gian chạy, số bước và danh sách todo của agent. Các bước của subagent được gộp vào dòng của agent cha.
 
 **Phiên làm việc**
-- Mọi phiên Claude Code trên máy (chạy ở terminal hay trong Hub) đều mở lại, tách nhánh, đổi tên, nhóm theo project hoặc xoá được. Xoá nghĩa là chuyển vào Thùng rác.
+- Mọi phiên của Claude Code, Antigravity, Codex và Gemini CLI trên máy (chạy ở terminal hay trong Hub) đều mở lại, tách nhánh, đổi tên, nhóm theo project hoặc xoá được. Xoá nghĩa là chuyển vào Thùng rác.
 - Phiên đang bị agent chạy nền (`claude --bg`) giữ: có 3 cách xử lý là tách nhánh, chuyển vào Hub (`claude stop` rồi tiếp tục), hoặc mở bằng terminal.
 - Mục **Agents nền**: liệt kê các agent `claude --bg`, xem trực tiếp (chỉ đọc), mở terminal hoặc gỡ agent.
 
 **File**
-- Cột File (Ctrl+B): cây thư mục project, xem và sửa file (Ctrl+S để lưu; báo khi agent sửa cùng file), xem trước ảnh và markdown, tạo file mới.
+- Cột File (Ctrl+B): cây thư mục project, kéo thả để di chuyển file/thư mục, tải file từ ngoài vào hoặc kéo thả đường dẫn file vào ô chat, xem và sửa file (Ctrl+S để lưu; báo khi agent sửa cùng file), xem trước ảnh và markdown, tạo file mới.
 - Chỉ truy cập được trong các thư mục project mà Hub biết.
 
 **Thống kê dùng**
-- Token theo ngày, model, project và phiên cho toàn máy.
-- Lịch sử dài hạn lấy từ số liệu của chính Claude Code.
+- Token theo ngày, model, project và phiên cho toàn máy trên mọi agent.
+- Lịch sử dài hạn tổng hợp từ các agent trên máy.
 - Xem theo tài khoản: token tính cho tài khoản đang đăng nhập lúc dùng.
 - Hạn mức 5 giờ / 7 ngày kèm giờ làm mới.
-- Chi phí là ước tính theo giá API niêm yết, không phải hoá đơn.
+- Chi phí lấy từ CLI hoặc ước tính từ số token theo bảng giá API niêm yết (`PRICE_PER_M`).
 
 **Dashboard màn Home**
 - Việc đang chạy (bước hiện tại, thời gian chạy, tiến độ todo), việc cần xử lý, output hôm nay, chi phí toàn máy, hạn mức, biểu đồ token 14 ngày, project hoạt động nhiều và chat gần đây.
 
 **Giao diện**
-- Nút chuyển tiếng Việt / tiếng Anh ở thanh trên cùng.
+- Menu dropdown chọn ngôn ngữ kèm icon cờ pixel ở thanh trên cùng.
 - Giao diện sáng / tối / theo hệ thống. Các cột kéo được độ rộng và thu gọn được.
 - Màn hình nào cũng có link riêng (`#tab=…`, `#chat=…`, `#session=…`) để mở ở tab mới. Chuột phải để mở menu có thêm thông tin.
 
@@ -63,8 +63,8 @@ Thư mục `skills/` chứa bộ skill SDLC của factory (`sdlc-ideate`, `sdlc-
 Skill được nhóm theo vai trò: **Điều phối, PM, BA, SA, Dev, BE, FE, Mobile, QA, DevOps**, bao trọn vòng đời phần mềm từ tiếp nhận yêu cầu, khám phá, tới xử lý sự cố.
 
 Bộ này **chỉ là dự phòng**. Với mỗi skill, Hub dùng theo thứ tự:
-1. skill riêng của project, ở `<project>/.claude/skills/`
-2. skill trên máy, ở `~/.claude/skills/`
+1. skill riêng của project, ở `<project>/.agents/skills/`, `.agent/skills/`, `.claude/skills/`, `.codex/skills/`, `.gemini/skills/`
+2. skill trên máy, ở `~/.agents/skills/`, `~/.gemini/antigravity-cli/builtin/skills/`, `~/.claude/skills/`, `~/.codex/skills/`, `~/.gemini/config/skills/`
 3. skill có sẵn hoặc skill của plugin tương đương, khai báo ở mục `prefer:` của skill (ví dụ `code-review`)
 4. cuối cùng mới là `SKILL.md` của factory
 

@@ -103,7 +103,20 @@ function md(src) {
   // links: reserve placeholders first so bold / italic rules don't break URLs
   const links = [];
   const keep = html => { links.push(html); return `\u0001${links.length - 1}\u0001`; };
+  const imgTag = (rawUrl, alt = '', w = '', h = '') => {
+    const src = /^https?:\/\/|^\//.test(rawUrl) ? rawUrl
+      : (typeof fx !== 'undefined' && fx.root) ? `/api/fs/raw?root=${encodeURIComponent(fx.root)}&path=${encodeURIComponent(rawUrl.replace(/^\.\//, ''))}`
+      : rawUrl;
+    const wh = (w ? ` width="${w}"` : '') + (h ? ` height="${h}"` : '');
+    return keep(`<img src="${src}" alt="${alt}"${wh} class="md-img" data-noicon>`);
+  };
   s = esc(s)
+    .replace(/&lt;img\s+([^&]*?)&gt;/gi, (all, attrs) => {
+      const attr = k => { const m = attrs.match(new RegExp(`\\b${k}=&quot;([^&]*?)&quot;`, 'i')); return m ? m[1] : ''; };
+      const src = attr('src');
+      return src ? imgTag(src, attr('alt'), attr('width'), attr('height')) : all;
+    })
+    .replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (_, alt, url) => imgTag(url, alt))
     .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (all, text, url) => linkHtml(url, text, keep) || all)
     .replace(/`([^`\n]+)`/g, (_, c) => keep(linkHtml(c, `<code>${c}</code>`, null, true) || `<code>${c}</code>`))
     .replace(/\bhttps?:\/\/[^\s<>"'`\u0001]+/g, u => { const m = u.match(/[.,;:!?)\]*_]+$/); const url = m ? u.slice(0, -m[0].length) : u; return keep(linkHtml(url, url)) + (m ? m[0] : ''); })
@@ -119,6 +132,8 @@ function md(src) {
     if ((m = line.match(/^\s*[-*]\s+(.*)/))) { if (!list || list.t !== 'ul') { flush(); list = { t: 'ul', items: [] }; } list.items.push(m[1]); continue; }
     if ((m = line.match(/^\s*\d+[.)]\s+(.*)/))) { if (!list || list.t !== 'ol') { flush(); list = { t: 'ol', items: [] }; } list.items.push(m[1]); continue; }
     flush();
+    if (/^\s*&lt;div\s+align=&quot;center&quot;\s*&gt;\s*$/i.test(line)) { out.push('<div class="md-center">'); continue; }
+    if (/^\s*&lt;\/div&gt;\s*$/i.test(line)) { out.push('</div>'); continue; }
     if ((m = line.match(/^(#{1,4})\s+(.*)/))) { out.push(`<h${m[1].length}>${m[2]}</h${m[1].length}>`); continue; }
     if (/^\s*\|.*\|\s*$/.test(line)) {
       const rows = [];
@@ -131,7 +146,7 @@ function md(src) {
     out.push(`<p>${line}</p>`);
   }
   flush();
-  return out.join('\n').replace(/\u0001(\d+)\u0001/g, (_, i) => links[+i]).replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[+i]);
+  return out.join('\n').replace(/\u0001(\d+)\u0001/g, (_, i) => links[+i]).replace(/\u0001(\d+)\u0001/g, (_, i) => links[+i]).replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[+i]);
 }
 // url is already escaped. Web → open in a new tab; file:// or a file path → open in the File panel.
 // codeOnly: text inside `code` — only linkified if it is clearly a URL / file path.

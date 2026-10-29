@@ -353,6 +353,11 @@ textarea { resize: vertical; line-height: 1.5; }
 .md pre code { background: none; padding: 0; color: inherit; }
 .md ul, .md ol { margin: 4px 0 8px; padding-left: 22px; }
 .md h1, .md h2, .md h3, .md h4 { margin: 10px 0 6px; font-size: 15px; }
+.md img.md-img { vertical-align: middle; max-width: 100%; }
+.fx-md h1 { font-size: 22px; display: flex; align-items: center; gap: 12px; }
+.md-center { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.md-center h1 { justify-content: center; margin: 4px 0 2px; font-size: 26px; }
+.md-center p { max-width: 680px; }
 .md table { border-collapse: collapse; margin: 6px 0; font-size: 12.5px; }
 .md td, .md th { border: 1px solid var(--line); padding: 4px 8px; }
 .composer-wrap { background: var(--panel); border-top: 1px solid var(--line); padding: 10px max(20px, calc((100% - 980px) / 2)) 8px; display: flex; flex-direction: column; gap: 8px; }

@@ -20,6 +20,10 @@ const expandHome = p => (typeof p === 'string' ? p.replace(/^~(?=\/|$)/, HOME) :
 const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || expandHome(CFG.claudeConfigDir) || path.join(HOME, '.claude');
 const CLAUDE_JSON = path.join(HOME, '.claude.json');
 const SESSIONS_DIR = path.join(CLAUDE_DIR, 'projects');
+const GEMINI_DIR = process.env.GEMINI_CONFIG_DIR || expandHome(CFG.geminiConfigDir) || path.join(HOME, '.gemini');
+const AGY_DIR = process.env.AGY_CONFIG_DIR || expandHome(CFG.agyConfigDir) || path.join(GEMINI_DIR, 'antigravity-cli');
+const CODEX_DIR = process.env.CODEX_HOME || expandHome(CFG.codexConfigDir) || path.join(HOME, '.codex');
+const AGENTS_DIR = path.join(HOME, '.agents');
 const CLAUDE_BIN = process.env.CLAUDE_BIN || expandHome(CFG.agents && CFG.agents.claude && CFG.agents.claude.bin) || 'claude';
 const PORT = Number(process.env.PORT) || Number(CFG.port) || 7420;
 const HOST = process.env.HOST || CFG.host || '127.0.0.1';
@@ -79,7 +83,27 @@ const dayKey = ts => {
 };
 const modelFamily = m => {
   const s = String(m || '').toLowerCase();
-  return s.includes('opus') ? 'Opus' : s.includes('sonnet') ? 'Sonnet' : s.includes('haiku') ? 'Haiku' : s.includes('fable') ? 'Fable' : 'Other';
+  if (s.includes('opus')) return 'Opus';
+  if (s.includes('sonnet')) return 'Sonnet';
+  if (s.includes('haiku')) return 'Haiku';
+  if (s.includes('fable')) return 'Fable';
+  if (s.includes('gemini') || s.includes('argon') || s.includes('agy') || s.includes('antigravity')) return 'Gemini';
+  if (s.includes('gpt') || s.includes('codex') || /^o[134]/.test(s)) return 'Codex';
+  return 'Other';
+};
+// API list price per 1M tokens (USD) for estimating cost when the CLI doesn't emit total_cost_usd
+const PRICE_PER_M = {
+  Opus:   { in: 15,   out: 75,  cr: 1.5,   cw: 18.75 },
+  Sonnet: { in: 3,    out: 15,  cr: 0.3,   cw: 3.75  },
+  Haiku:  { in: 0.8,  out: 4,   cr: 0.08,  cw: 1     },
+  Fable:  { in: 3,    out: 15,  cr: 0.3,   cw: 3.75  },
+  Gemini: { in: 1.25, out: 10,  cr: 0.31,  cw: 1.25  },
+  Codex:  { in: 1.5,  out: 6,   cr: 0.375, cw: 1.5   },
+  Other:  { in: 2,    out: 8,   cr: 0.2,   cw: 2     },
+};
+const estimateCost = (u = {}, fam = 'Other') => {
+  const p = PRICE_PER_M[fam] || PRICE_PER_M.Other;
+  return ((u.in || 0) * p.in + (u.out || 0) * p.out + (u.cr || 0) * p.cr + (u.cw || 0) * p.cw) / 1e6;
 };
 
 // Mask sensitive values in the MCP config before sending it to the browser
@@ -106,7 +130,7 @@ const hubCfg = () => Object.assign({ extraProjects: [], hidden: [], favorites: [
 const sessTitle = (s, names = hubCfg().names, lang = 'vi') => names[s.id] || s.customTitle || s.aiTitle || s.firstPrompt || tr(lang, 'server.session.untitled');
 const saveHub = c => writeJSON(HUB_FILE, c);
 
-// ---------- Read local Claude config ----------
+// ---------- Read local agent configs (.claude, .gemini, .agents, .codex) ----------
 function gitBranch(p) {
   let d = p;
   for (let i = 0; i < 6 && d !== path.dirname(d); i++, d = path.dirname(d)) {
@@ -122,40 +146,167 @@ function gitBranch(p) {
 function mdFiles(dir) {
   return listDir(dir).filter(e => e.isFile() && e.name.endsWith('.md')).map(e => e.name.replace(/\.md$/, ''));
 }
-function skillDirs(dir) {
-  return listDir(dir).filter(e => (e.isDirectory() || e.isSymbolicLink()) && exists(path.join(dir, e.name, 'SKILL.md'))).map(e => e.name);
+function skillDirs(dir, depth = 0) {
+  const out = [];
+  for (const e of listDir(dir)) {
+    if (!e.isDirectory() && !e.isSymbolicLink()) continue;
+    const sub = path.join(dir, e.name);
+    if (exists(path.join(sub, 'SKILL.md'))) out.push(e.name);
+    else if (depth < 2) out.push(...skillDirs(sub, depth + 1));
+  }
+  return [...new Set(out)];
+}
+const uniq = arr => [...new Set((arr || []).filter(Boolean))];
+
+// Lightweight parser for ~/.codex/config.toml (extracts model, approval_policy, [plugins.*], [mcp_servers.*])
+function readCodexConfig(file) {
+  if (!exists(file)) return null;
+  let raw = '';
+  try { raw = fs.readFileSync(file, 'utf8'); } catch { return null; }
+  const out = { model: null, defaultMode: null, enabledPlugins: {}, mcpServers: {} };
+  let sec = '';
+  for (const line of raw.split(/\r?\n/)) {
+    const s = line.replace(/\s+#.*$/, '').trim();
+    if (!s || s.startsWith('#')) continue;
+    const sm = s.match(/^\[(.+)\]$/);
+    if (sm) { sec = sm[1].trim(); continue; }
+    const kv = s.match(/^([A-Za-z0-9_.-]+)\s*=\s*(.+)$/);
+    if (!kv) continue;
+    const k = kv[1], vRaw = kv[2].trim();
+    let v = vRaw;
+    try { v = JSON.parse(vRaw); } catch { v = vRaw.replace(/^['"]|['"]$/g, ''); }
+    if (!sec) {
+      if (k === 'model' && typeof v === 'string') out.model = v;
+      if ((k === 'approval_policy' || k === 'sandbox_mode') && typeof v === 'string' && !out.defaultMode) out.defaultMode = v;
+      continue;
+    }
+    const pm = sec.match(/^plugins\.(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.@-]+))$/);
+    if (pm && k === 'enabled') {
+      const pk = pm[1] || pm[2] || pm[3];
+      out.enabledPlugins[pk] = !!v;
+      continue;
+    }
+    const mm = sec.match(/^mcp_servers\.(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.-]+))(?:\.env)?$/);
+    if (mm) {
+      const mk = mm[1] || mm[2] || mm[3];
+      const srv = (out.mcpServers[mk] = out.mcpServers[mk] || {});
+      if (sec.endsWith('.env')) { srv.env = srv.env || {}; srv.env[k] = v; }
+      else srv[k] = v;
+    }
+  }
+  return out;
 }
 
-function installedPlugins() {
-  return (readJSON(path.join(CLAUDE_DIR, 'plugins', 'installed_plugins.json'), {}) || {}).plugins || {};
-}
-
-function pluginMeta(installPath) {
-  const pj = readJSON(path.join(installPath, '.claude-plugin', 'plugin.json'), {}) || {};
-  const mcpFile = readJSON(path.join(installPath, '.mcp.json'), null);
-  const mcp = mcpFile ? (mcpFile.mcpServers || mcpFile) : (pj.mcpServers && typeof pj.mcpServers === 'object' ? pj.mcpServers : {});
+function pluginMeta(installPath, fallback = {}) {
+  if (!installPath || !isDir(installPath)) {
+    return {
+      description: fallback.description || '',
+      author: (fallback.author && (fallback.author.name || fallback.author)) || '',
+      version: fallback.version || '',
+      commands: [], agents: [], skills: [], hooks: false, mcp: [], mcpDefs: {},
+    };
+  }
+  const manifests = [
+    path.join(installPath, '.claude-plugin', 'plugin.json'),
+    path.join(installPath, '.codex-plugin', 'plugin.json'),
+    path.join(installPath, '.antigravity', 'plugin.json'),
+    path.join(installPath, 'plugin.json'),
+    path.join(installPath, 'gemini-extension.json'),
+    path.join(installPath, 'package.json'),
+  ].map(f => readJSON(f, null)).filter(Boolean);
+  const pj = Object.assign({}, fallback, ...manifests.slice().reverse());
+  const mcpFile = readJSON(path.join(installPath, '.mcp.json'), null) || readJSON(path.join(installPath, 'mcp_config.json'), null);
+  const mcpDefs = mcpFile ? (mcpFile.mcpServers || mcpFile) : (pj.mcpServers && typeof pj.mcpServers === 'object' && !Array.isArray(pj.mcpServers) ? pj.mcpServers : {});
+  const authorObj = pj.author || (pj.interface && pj.interface.developerName);
   return {
-    description: pj.description || '',
-    author: pj.author && (pj.author.name || pj.author) || '',
+    description: pj.description || (pj.interface && pj.interface.shortDescription) || fallback.description || '',
+    author: (authorObj && (authorObj.name || authorObj)) || '',
+    version: pj.version || fallback.version || '',
     commands: mdFiles(path.join(installPath, 'commands')),
     agents: mdFiles(path.join(installPath, 'agents')),
     skills: skillDirs(path.join(installPath, 'skills')),
-    hooks: exists(path.join(installPath, 'hooks')),
-    mcp: Object.keys(mcp || {}),
+    hooks: exists(path.join(installPath, 'hooks')) || exists(path.join(installPath, 'hooks.json')) || isDir(path.join(installPath, 'runtime')),
+    mcp: Object.keys(mcpDefs || {}),
+    mcpDefs: mcpDefs || {},
   };
 }
 
+function installedPlugins() {
+  const rawClaude = (readJSON(path.join(CLAUDE_DIR, 'plugins', 'installed_plugins.json'), {}) || {}).plugins || {};
+  const out = {};
+  for (const [k, list] of Object.entries(rawClaude)) {
+    out[k] = (list || []).map(x => ({ agent: 'claude', ...x }));
+  }
+  const add = (key, entry) => {
+    out[key] = out[key] || [];
+    if (!out[key].some(x => x.installPath === entry.installPath)) out[key].push(entry);
+  };
+  // Claude cache plugins
+  const claudeCache = path.join(CLAUDE_DIR, 'plugins', 'cache');
+  for (const m of listDir(claudeCache).filter(d => d.isDirectory())) {
+    for (const pl of listDir(path.join(claudeCache, m.name)).filter(d => d.isDirectory())) {
+      const vers = listDir(path.join(claudeCache, m.name, pl.name)).filter(d => d.isDirectory()).map(d => d.name).sort(semverCmp);
+      if (vers.length) add(`${pl.name}@${m.name}`, { installPath: path.join(claudeCache, m.name, pl.name, vers.at(-1)), version: vers.at(-1), scope: 'user', agent: 'claude' });
+    }
+  }
+  // Antigravity / Gemini plugins (~/.gemini/config/plugins/*, ~/.gemini/antigravity-cli/plugins/*, ~/.agents/plugins/*)
+  for (const [dir, market] of [
+    [path.join(GEMINI_DIR, 'config', 'plugins'), 'antigravity'],
+    [path.join(AGY_DIR, 'plugins'), 'antigravity'],
+    [path.join(AGENTS_DIR, 'plugins'), 'agents'],
+  ]) {
+    for (const pl of listDir(dir).filter(d => d.isDirectory() && !d.name.startsWith('.'))) {
+      const ip = path.join(dir, pl.name);
+      const meta = pluginMeta(ip);
+      add(`${pl.name}@${market}`, { installPath: ip, version: meta.version || 'local', scope: 'user', agent: 'agy' });
+    }
+  }
+  // Codex cached plugins (~/.codex/plugins/cache/<market>/<plugin>/<version>)
+  const codexCache = path.join(CODEX_DIR, 'plugins', 'cache');
+  for (const m of listDir(codexCache).filter(d => d.isDirectory())) {
+    for (const pl of listDir(path.join(codexCache, m.name)).filter(d => d.isDirectory())) {
+      const vers = listDir(path.join(codexCache, m.name, pl.name)).filter(d => d.isDirectory()).map(d => d.name).sort(semverCmp);
+      if (!vers.length) continue;
+      const ip = path.join(codexCache, m.name, pl.name, vers.at(-1));
+      const meta = pluginMeta(ip);
+      add(`${pl.name}@${m.name}`, { installPath: ip, version: meta.version || vers.at(-1).slice(0, 8), scope: 'user', agent: 'codex' });
+    }
+  }
+  return out;
+}
+
 function resolvePluginInstall(key, projectPath) {
-  const entries = installedPlugins()[key] || [];
+  const inst = installedPlugins();
+  const [name, market] = String(key || '').split('@');
+  let entries = inst[key];
+  if (!entries) {
+    const matchKey = Object.keys(inst).find(k => k === key || k.split('@')[0] === name);
+    if (matchKey) entries = inst[matchKey];
+  }
+  entries = entries || [];
   const e = entries.find(x => projectPath && x.projectPath === projectPath)
     || entries.find(x => x.scope === 'user')
     || entries.slice().sort((a, b) => semverCmp(a.version, b.version)).pop();
   if (e && isDir(e.installPath)) return e;
-  // fallback: look up the latest version in the cache
-  const [name, market] = key.split('@');
-  const base = path.join(CLAUDE_DIR, 'plugins', 'cache', market || '', name || '');
-  const vers = listDir(base).filter(d => d.isDirectory()).map(d => d.name).sort(semverCmp);
-  return vers.length ? { installPath: path.join(base, vers.at(-1)), version: vers.at(-1), scope: 'cache' } : null;
+  for (const root of [path.join(CLAUDE_DIR, 'plugins', 'cache'), path.join(CODEX_DIR, 'plugins', 'cache')]) {
+    const base = path.join(root, market || '', name || '');
+    const vers = listDir(base).filter(d => d.isDirectory()).map(d => d.name).sort(semverCmp);
+    if (vers.length) {
+      const ip = path.join(base, vers.at(-1));
+      const meta = pluginMeta(ip);
+      return { installPath: ip, version: meta.version || vers.at(-1).slice(0, 8), scope: 'cache' };
+    }
+  }
+  if (projectPath) {
+    for (const sub of ['.agents/plugins', '.agent/plugins', '.claude/plugins']) {
+      const pDir = path.join(projectPath, sub, name);
+      if (isDir(pDir)) {
+        const meta = pluginMeta(pDir);
+        return { installPath: pDir, version: meta.version || 'project', scope: 'project' };
+      }
+    }
+  }
+  return null;
 }
 
 function settingsLayers(p) {
@@ -170,56 +321,204 @@ function settingsLayers(p) {
   return layers.map(l => ({ ...l, data: readJSON(l.file, null) })).filter(l => l.data);
 }
 
+// Collect enabled plugins across Claude settings, Antigravity (~/.gemini/config/config.json), Codex (config.toml), and project .agents/plugins
+function collectEnabledPlugins(p, claudeLayers = settingsLayers(p)) {
+  const inst = installedPlugins();
+  const resolveKey = rawKey => {
+    if (inst[rawKey]) return rawKey;
+    const base = String(rawKey).split('@')[0];
+    return Object.keys(inst).find(k => k.split('@')[0] === base) || (rawKey.includes('@') ? rawKey : `${rawKey}@antigravity`);
+  };
+  const enabled = {};
+  for (const l of claudeLayers) {
+    for (const [k, v] of Object.entries(l.data.enabledPlugins || {})) enabled[resolveKey(k)] = { on: !!v, scope: l.scope, agent: 'claude' };
+  }
+  const agyCfg = readJSON(path.join(GEMINI_DIR, 'config', 'config.json'), null);
+  if (agyCfg && agyCfg.plugins && typeof agyCfg.plugins === 'object') {
+    for (const [k, v] of Object.entries(agyCfg.plugins)) {
+      const on = typeof v === 'object' && v !== null ? v.enabled !== false : !!v;
+      enabled[resolveKey(k)] = { on, scope: 'user', agent: 'agy' };
+    }
+  }
+  const codexUser = readCodexConfig(path.join(CODEX_DIR, 'config.toml'));
+  if (codexUser) {
+    for (const [k, v] of Object.entries(codexUser.enabledPlugins)) enabled[resolveKey(k)] = { on: !!v, scope: 'user', agent: 'codex' };
+  }
+  if (p && p !== HOME) {
+    const codexProj = readCodexConfig(path.join(p, '.codex', 'config.toml'));
+    if (codexProj) {
+      for (const [k, v] of Object.entries(codexProj.enabledPlugins)) enabled[resolveKey(k)] = { on: !!v, scope: 'project', agent: 'codex' };
+    }
+    for (const sub of ['.agents/plugins', '.agent/plugins']) {
+      for (const d of listDir(path.join(p, sub)).filter(x => x.isDirectory() && !x.name.startsWith('.'))) {
+        enabled[`${d.name}@project`] = { on: true, scope: 'project', agent: 'agy' };
+      }
+    }
+  }
+  return enabled;
+}
+
 function projectConfig(p) {
   const cj = readJSON(CLAUDE_JSON, {}) || {};
   const pj = (cj.projects || {})[p] || {};
   const layers = settingsLayers(p);
+  const codexUser = readCodexConfig(path.join(CODEX_DIR, 'config.toml'));
+  const codexProj = p && p !== HOME ? readCodexConfig(path.join(p, '.codex', 'config.toml')) : null;
 
-  // Default model / permission (later layers override earlier ones)
+  // Default model / permission (Claude settings → Codex config → Antigravity default)
   let model = null, defaultMode = null;
-  const enabled = {};
   for (const l of layers) {
     if (l.data.model) model = l.data.model;
     if (l.data.permissions && l.data.permissions.defaultMode) defaultMode = l.data.permissions.defaultMode;
-    for (const [k, v] of Object.entries(l.data.enabledPlugins || {})) enabled[k] = { on: !!v, scope: l.scope };
   }
+  if (!model) model = (codexProj && codexProj.model) || (codexUser && codexUser.model) || agyMetaMap().defaultModel || null;
+  if (!defaultMode) defaultMode = (codexProj && codexProj.defaultMode) || (codexUser && codexUser.defaultMode) || null;
 
+  const enabled = collectEnabledPlugins(p, layers);
   const plugins = Object.entries(enabled).map(([key, v]) => {
     const inst = resolvePluginInstall(key, p);
-    const meta = inst ? pluginMeta(inst.installPath) : null;
-    return { key, enabled: v.on, scope: v.scope, version: inst && inst.version, installed: !!inst, ...(meta || {}) };
+    const { mcpDefs, ...meta } = inst ? pluginMeta(inst.installPath) : { mcpDefs: {} };
+    const agent = v.agent || (inst && inst.agent) || 'claude';
+    return { key, name: key.split('@')[0], marketplace: key.split('@')[1] || '', agent, enabled: v.on, scope: v.scope, version: (meta && meta.version) || (inst && inst.version), installed: !!inst, ...meta, _mcpDefs: mcpDefs };
   });
 
-  // MCP servers in the same order Claude Code loads them
+  // MCP servers across Claude (.claude.json, .mcp.json), Antigravity (.gemini/antigravity-cli/mcp_config.json, .gemini/config/mcp_config.json, .agents/mcp_config.json), Gemini (.gemini/settings.json), Codex (config.toml), and enabled plugins
   const mcp = [];
-  for (const [name, s] of Object.entries(cj.mcpServers || {})) mcp.push({ name, scope: 'user', ...maskServer(s) });
-  for (const [name, s] of Object.entries(pj.mcpServers || {})) mcp.push({ name, scope: 'local', ...maskServer(s) });
-  const mcpJson = p !== HOME && readJSON(path.join(p, '.mcp.json'), null);
-  if (mcpJson) {
-    const approvedAll = layers.some(l => l.data.enableAllProjectMcpServers);
-    for (const [name, s] of Object.entries(mcpJson.mcpServers || {})) {
-      const approved = approvedAll || (pj.enabledMcpjsonServers || []).includes(name) || layers.some(l => (l.data.enabledMcpjsonServers || []).includes(name));
-      const disabled = (pj.disabledMcpjsonServers || []).includes(name);
-      mcp.push({ name, scope: 'project', approved, disabled, ...maskServer(s) });
+  const seenMcp = new Set();
+  const pushMcp = (name, scope, srv, extra = {}) => {
+    if (!name || !srv || typeof srv !== 'object') return;
+    const k = `${name}|${scope}`;
+    if (seenMcp.has(k)) return;
+    seenMcp.add(k);
+    mcp.push({ name, scope, ...extra, ...maskServer(srv) });
+  };
+  for (const [name, s] of Object.entries(cj.mcpServers || {})) pushMcp(name, 'user', s, { agent: 'claude' });
+  for (const [f, ag] of [
+    [path.join(AGY_DIR, 'mcp_config.json'), 'agy'],
+    [path.join(GEMINI_DIR, 'config', 'mcp_config.json'), 'agy'],
+    [path.join(GEMINI_DIR, 'settings.json'), 'gemini'],
+    [path.join(AGENTS_DIR, 'mcp_config.json'), 'agy'],
+  ]) {
+    const j = readJSON(f, null);
+    if (j && j.mcpServers) for (const [name, s] of Object.entries(j.mcpServers)) pushMcp(name, 'user', s, { agent: ag });
+  }
+  if (codexUser && codexUser.mcpServers) {
+    for (const [name, s] of Object.entries(codexUser.mcpServers)) pushMcp(name, 'user', s, { agent: 'codex' });
+  }
+  for (const [name, s] of Object.entries(pj.mcpServers || {})) pushMcp(name, 'local', s, { agent: 'claude' });
+  if (p && p !== HOME) {
+    const mcpJson = readJSON(path.join(p, '.mcp.json'), null);
+    if (mcpJson && mcpJson.mcpServers) {
+      const approvedAll = layers.some(l => l.data.enableAllProjectMcpServers);
+      for (const [name, s] of Object.entries(mcpJson.mcpServers)) {
+        const approved = approvedAll || (pj.enabledMcpjsonServers || []).includes(name) || layers.some(l => (l.data.enabledMcpjsonServers || []).includes(name));
+        const disabled = (pj.disabledMcpjsonServers || []).includes(name);
+        pushMcp(name, 'project', s, { agent: 'claude', approved, disabled });
+      }
+    }
+    for (const [rel, ag] of [
+      ['.agents/mcp_config.json', 'agy'],
+      ['.agent/mcp_config.json', 'agy'],
+      ['mcp_config.json', 'agy'],
+      ['.gemini/settings.json', 'gemini'],
+      ['.gemini/mcp_config.json', 'gemini'],
+    ]) {
+      const j = readJSON(path.join(p, rel), null);
+      if (j && j.mcpServers) for (const [name, s] of Object.entries(j.mcpServers)) pushMcp(name, 'project', s, { agent: ag, approved: true, disabled: false });
+    }
+    if (codexProj && codexProj.mcpServers) {
+      for (const [name, s] of Object.entries(codexProj.mcpServers)) pushMcp(name, 'project', s, { agent: 'codex', approved: true, disabled: false });
     }
   }
   for (const pl of plugins.filter(x => x.enabled && x.mcp && x.mcp.length)) {
-    for (const name of pl.mcp) mcp.push({ name, scope: 'plugin', plugin: pl.key, type: 'plugin' });
+    for (const name of pl.mcp) {
+      const def = (pl._mcpDefs && pl._mcpDefs[name]) || {};
+      pushMcp(name, 'plugin', def, { agent: pl.agent, plugin: pl.key, type: def.type || (def.url ? 'http' : def.command ? 'stdio' : 'plugin') });
+    }
   }
+  for (const pl of plugins) delete pl._mcpDefs;
 
-  const claudeMd = [path.join(p, 'CLAUDE.md'), path.join(p, '.claude', 'CLAUDE.md'), path.join(p, 'CLAUDE.local.md')].filter(exists);
+  // Rule / instruction files: AGENTS.md first (unified multi-agent instructions), then CLAUDE.md, GEMINI.md, .agents/rules/*.md
+  const ruleCandidates = [
+    path.join(p, 'AGENTS.md'), path.join(p, '.agents', 'AGENTS.md'), path.join(p, '.agent', 'AGENTS.md'),
+    path.join(p, 'CLAUDE.md'), path.join(p, '.claude', 'CLAUDE.md'), path.join(p, 'CLAUDE.local.md'),
+    path.join(p, 'GEMINI.md'), path.join(p, '.gemini', 'GEMINI.md'),
+    ...listDir(path.join(p, '.agents', 'rules')).filter(e => e.isFile() && e.name.endsWith('.md')).map(e => path.join(p, '.agents', 'rules', e.name)),
+  ];
+  const claudeMd = uniq(ruleCandidates.filter(exists));
+  const ruleFile = claudeMd[0] ? path.basename(claudeMd[0]) : 'AGENTS.md';
   let claudeMdPreview = '';
   if (claudeMd[0]) { try { claudeMdPreview = fs.readFileSync(claudeMd[0], 'utf8').slice(0, 4000); } catch { /* ignore */ } }
+
+  // Settings files across all agents
+  const settingsCandidates = [
+    ...layers.map(l => ({ scope: l.scope, file: l.file })),
+    { scope: 'user', file: path.join(GEMINI_DIR, 'config', 'config.json') },
+    { scope: 'user', file: path.join(GEMINI_DIR, 'settings.json') },
+    { scope: 'user', file: path.join(AGY_DIR, 'mcp_config.json') },
+    { scope: 'user', file: path.join(CODEX_DIR, 'config.toml') },
+    ...(p && p !== HOME ? [
+      { scope: 'project', file: path.join(p, '.agents', 'mcp_config.json') },
+      { scope: 'project', file: path.join(p, '.gemini', 'settings.json') },
+      { scope: 'project', file: path.join(p, '.codex', 'config.toml') },
+    ] : []),
+  ].filter(x => exists(x.file));
+  const seenSf = new Set();
+  const settingsFiles = settingsCandidates.filter(x => !seenSf.has(x.file) && seenSf.add(x.file)).map(x => ({ scope: x.scope, file: tilde(x.file) }));
+
+  // Commands, subagents, and skills across .claude, .gemini, .agents, .codex, and enabled plugins
+  const plugCmds = plugins.filter(x => x.enabled).flatMap(x => x.commands || []);
+  const plugAgents = plugins.filter(x => x.enabled).flatMap(x => x.agents || []);
+  const plugSkills = plugins.filter(x => x.enabled).flatMap(x => x.skills || []);
+  const userCmds = uniq([
+    ...mdFiles(path.join(CLAUDE_DIR, 'commands')),
+    ...mdFiles(path.join(GEMINI_DIR, 'config', 'commands')),
+    ...mdFiles(path.join(AGENTS_DIR, 'commands')),
+    ...plugCmds,
+  ]);
+  const projCmds = p === HOME ? [] : uniq([
+    ...mdFiles(path.join(p, '.claude', 'commands')),
+    ...mdFiles(path.join(p, '.agents', 'commands')),
+    ...mdFiles(path.join(p, '.agent', 'commands')),
+    ...mdFiles(path.join(p, '.gemini', 'commands')),
+  ]);
+  const userAgents = uniq([
+    ...mdFiles(path.join(CLAUDE_DIR, 'agents')),
+    ...mdFiles(path.join(GEMINI_DIR, 'config', 'agents')),
+    ...mdFiles(path.join(AGENTS_DIR, 'agents')),
+    ...plugAgents,
+  ]);
+  const projAgents = p === HOME ? [] : uniq([
+    ...mdFiles(path.join(p, '.claude', 'agents')),
+    ...mdFiles(path.join(p, '.agents', 'agents')),
+    ...mdFiles(path.join(p, '.agent', 'agents')),
+    ...mdFiles(path.join(p, '.gemini', 'agents')),
+  ]);
+  const userSkills = uniq([
+    ...skillDirs(path.join(CLAUDE_DIR, 'skills')),
+    ...skillDirs(path.join(GEMINI_DIR, 'config', 'skills')),
+    ...skillDirs(path.join(AGY_DIR, 'builtin', 'skills')),
+    ...skillDirs(path.join(AGENTS_DIR, 'skills')),
+    ...skillDirs(path.join(CODEX_DIR, 'skills')),
+    ...plugSkills,
+  ]);
+  const projSkills = p === HOME ? [] : uniq([
+    ...skillDirs(path.join(p, '.claude', 'skills')),
+    ...skillDirs(path.join(p, '.agents', 'skills')),
+    ...skillDirs(path.join(p, '.agent', 'skills')),
+    ...skillDirs(path.join(p, '.gemini', 'skills')),
+    ...skillDirs(path.join(p, '.codex', 'skills')),
+  ]);
 
   return {
     path: p, display: tilde(p), name: path.basename(p) || p,
     branch: gitBranch(p), model, defaultMode,
-    claudeMd: claudeMd.map(tilde), claudeMdPreview,
-    settingsFiles: layers.map(l => ({ scope: l.scope, file: tilde(l.file) })),
+    ruleFile, claudeMd: claudeMd.map(tilde), claudeMdPreview,
+    settingsFiles,
     mcp, plugins,
-    commands: { user: mdFiles(path.join(CLAUDE_DIR, 'commands')), project: p === HOME ? [] : mdFiles(path.join(p, '.claude', 'commands')) },
-    agents: { user: mdFiles(path.join(CLAUDE_DIR, 'agents')), project: p === HOME ? [] : mdFiles(path.join(p, '.claude', 'agents')) },
-    skills: { user: skillDirs(path.join(CLAUDE_DIR, 'skills')), project: p === HOME ? [] : skillDirs(path.join(p, '.claude', 'skills')) },
+    commands: { user: userCmds, project: projCmds },
+    agents: { user: userAgents, project: projAgents },
+    skills: { user: userSkills, project: projSkills },
     allowedTools: [...new Set(layers.flatMap(l => (l.data.permissions && l.data.permissions.allow) || []))].length,
     lastSessionId: pj.lastSessionId || null,
   };
@@ -229,7 +528,7 @@ function projectSummary(p) {
   const c = projectConfig(p);
   return {
     path: p, display: c.display, name: c.name, branch: c.branch, model: c.model,
-    hasClaudeMd: c.claudeMd.length > 0,
+    hasClaudeMd: c.claudeMd.length > 0, ruleFile: c.ruleFile,
     mcpCount: c.mcp.filter(m => !m.disabled).length,
     pluginCount: c.plugins.filter(x => x.enabled).length,
     lastSessionId: c.lastSessionId,
@@ -238,8 +537,47 @@ function projectSummary(p) {
 
 function allProjectPaths() {
   const cj = readJSON(CLAUDE_JSON, {}) || {};
+  const gj = readJSON(path.join(GEMINI_DIR, 'projects.json'), {}) || {};
+  const apj = readJSON(path.join(AGY_DIR, 'cache', 'projects.json'), {}) || {};
+  const gpPaths = [];
+  for (const f of listDir(path.join(GEMINI_DIR, 'config', 'projects')).filter(e => e.isFile() && e.name.endsWith('.json'))) {
+    const d = readJSON(path.join(GEMINI_DIR, 'config', 'projects', f.name), null);
+    if (!d) continue;
+    if (d.name && d.name.startsWith('/')) gpPaths.push(d.name);
+    for (const r of (d.projectResources && d.projectResources.resources) || []) {
+      if (r.folderUri && r.folderUri.startsWith('file://')) gpPaths.push(r.folderUri.slice(7));
+    }
+  }
+  for (const sub of ['history', 'tmp']) {
+    for (const d of listDir(path.join(GEMINI_DIR, sub)).filter(e => e.isDirectory())) {
+      const pr = path.join(GEMINI_DIR, sub, d.name, '.project_root');
+      if (exists(pr)) {
+        try { const root = fs.readFileSync(pr, 'utf8').trim(); if (root) gpPaths.push(root); } catch { /* ignore */ }
+      }
+    }
+  }
   const hub = hubCfg();
-  return [...new Set([...Object.keys(cj.projects || {}), ...hub.extraProjects])].filter(isDir);
+  const basePaths = [...new Set([
+    __dirname,
+    ...Object.keys(cj.projects || {}),
+    ...Object.keys(gj.projects || {}),
+    ...Object.keys(apj || {}),
+    ...gpPaths,
+    ...hub.extraProjects,
+  ])].filter(isDir);
+  // Also include immediate child git/agent repos inside discovered workspace directories
+  const childRepos = [];
+  for (const bp of basePaths) {
+    if (bp === HOME) continue;
+    for (const d of listDir(bp).filter(e => e.isDirectory() && !e.name.startsWith('.'))) {
+      const sub = path.join(bp, d.name);
+      if (exists(path.join(sub, '.git')) || exists(path.join(sub, 'CLAUDE.md')) || exists(path.join(sub, 'AGENTS.md')) || exists(path.join(sub, 'GEMINI.md'))
+        || isDir(path.join(sub, '.claude')) || isDir(path.join(sub, '.agents')) || isDir(path.join(sub, '.gemini'))) {
+        childRepos.push(sub);
+      }
+    }
+  }
+  return [...new Set([...basePaths, ...childRepos])].filter(isDir);
 }
 
 function discoverProjects() {
@@ -253,30 +591,55 @@ function discoverProjects() {
 }
 
 function pluginCatalog() {
-  const base = path.join(CLAUDE_DIR, 'plugins', 'cache');
   const inst = installedPlugins();
-  const userEnabled = Object.assign({}, ...settingsLayers(null).map(l => l.data.enabledPlugins || {}));
+  const userEnabledMap = collectEnabledPlugins(HOME);
   const enabledIn = {};
   for (const p of allProjectPaths()) {
-    for (const l of settingsLayers(p).filter(l => l.scope === 'project' || l.scope === 'local')) {
-      for (const [k, v] of Object.entries(l.data.enabledPlugins || {})) if (v) (enabledIn[k] = enabledIn[k] || new Set()).add(tilde(p));
+    if (p === HOME) continue;
+    const projEnabled = collectEnabledPlugins(p);
+    for (const [k, v] of Object.entries(projEnabled)) {
+      if (v.on && (v.scope === 'project' || v.scope === 'local')) (enabledIn[k] = enabledIn[k] || new Set()).add(tilde(p));
     }
   }
   const out = [];
-  for (const m of listDir(base).filter(d => d.isDirectory())) {
-    for (const pl of listDir(path.join(base, m.name)).filter(d => d.isDirectory())) {
-      const vers = listDir(path.join(base, m.name, pl.name)).filter(d => d.isDirectory()).map(d => d.name).sort(semverCmp);
-      if (!vers.length) continue;
-      const key = `${pl.name}@${m.name}`;
-      out.push({
-        key, name: pl.name, marketplace: m.name, version: vers.at(-1), versions: vers,
-        installed: !!inst[key], userEnabled: !!userEnabled[key],
-        enabledIn: [...(enabledIn[key] || [])],
-        ...pluginMeta(path.join(base, m.name, pl.name, vers.at(-1))),
-      });
+  const seenKeys = new Set();
+  const pushPlugin = (key, name, marketplace, ver, versions, installPath, fallbackMeta = {}, isInstalled = true, agent = 'claude') => {
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    const { mcpDefs, ...meta } = pluginMeta(installPath, fallbackMeta);
+    const ue = userEnabledMap[key] || Object.entries(userEnabledMap).find(([k]) => k.split('@')[0] === name)?.[1];
+    out.push({
+      key, name, marketplace,
+      agent: (ue && ue.agent) || agent,
+      version: meta.version || ver || '',
+      versions: versions && versions.length ? versions : (meta.version || ver ? [meta.version || ver] : []),
+      installed: isInstalled,
+      userEnabled: !!(ue && ue.on),
+      enabledIn: [...(enabledIn[key] || [])],
+      ...meta,
+    });
+  };
+  // 1. All installed/cached plugins across Claude, Antigravity, and Codex
+  for (const [key, entries] of Object.entries(inst)) {
+    const [name, marketplace = 'local'] = key.split('@');
+    const sorted = (entries || []).slice().sort((a, b) => semverCmp(a.version, b.version));
+    const latest = sorted.at(-1);
+    if (!latest || !isDir(latest.installPath)) continue;
+    pushPlugin(key, name, marketplace, latest.version, sorted.map(x => x.version).filter(Boolean), latest.installPath, {}, true, latest.agent || 'claude');
+  }
+  // 2. Antigravity marketplace catalogs (~/.gemini/antigravity-cli/cache/marketplaces/*/marketplace.json)
+  const agyMarkets = path.join(AGY_DIR, 'cache', 'marketplaces');
+  for (const m of listDir(agyMarkets).filter(d => d.isDirectory())) {
+    const mj = readJSON(path.join(agyMarkets, m.name, 'marketplace.json'), null);
+    if (!mj || !Array.isArray(mj.plugins)) continue;
+    for (const p of mj.plugins) {
+      if (!p || !p.name) continue;
+      const key = `${p.name}@${m.name}`;
+      if (seenKeys.has(key) || [...seenKeys].some(k => k.split('@')[0] === p.name)) continue;
+      pushPlugin(key, p.name, m.name, p.version, p.version ? [p.version] : [], null, p, false, 'agy');
     }
   }
-  return out.sort((a, b) => (b.userEnabled - a.userEnabled) || a.key.localeCompare(b.key));
+  return out.sort((a, b) => (b.userEnabled - a.userEnabled) || (b.installed - a.installed) || a.key.localeCompare(b.key));
 }
 
 let claudeVersion = '', claudeMissing = false;
@@ -286,8 +649,25 @@ const agentInfo = {};
 for (const a of Object.values(AGENTS)) {
   execFile(expandHome(a.bin), ['--version'], { timeout: 15000 }, (e, out, err) => {
     agentInfo[a.key] = e && e.code === 'ENOENT' ? { available: false } : { available: true, version: String(out || err || '').trim().split('\n')[0].slice(0, 60) };
+    if (a.key === 'agy' && agentInfo[a.key].available && !(CFG.agents && CFG.agents.agy && CFG.agents.agy.models)) {
+      execFile(expandHome(a.bin), ['models'], { timeout: 15000 }, (me, mout) => {
+        if (me || !mout) return;
+        const clean = String(mout).replace(/\x1b\[[0-9;]*[a-zA-Z]|\r[^\n]*\r/g, '');
+        const parsed = [];
+        for (const line of clean.split('\n')) {
+          const m = line.trim().match(/^([a-z0-9][a-z0-9._-]+)\s{2,}(.+)$/i);
+          if (m) parsed.push([m[1].trim(), m[2].trim()]);
+        }
+        if (parsed.length) a.models = parsed;
+      });
+    }
   });
 }
+const defaultAgentKey = () => {
+  if (agentInfo.claude && agentInfo.claude.available) return 'claude';
+  const first = Object.values(AGENTS).find(a => agentInfo[a.key] && agentInfo[a.key].available);
+  return first ? first.key : 'claude';
+};
 const agentList = () => Object.values(AGENTS).map(a => ({ key: a.key, label: a.label, icon: a.icon, color: a.color, models: a.models, modes: a.modes, custom: !!a.custom,
   available: agentInfo[a.key] ? agentInfo[a.key].available : null, version: agentInfo[a.key] && agentInfo[a.key].version }));
 
@@ -310,20 +690,26 @@ function overview(lang = 'vi') {
   };
 }
 
-// ---------- Past sessions (~/.claude/projects/*/*.jsonl) ----------
+// ---------- Past sessions (~/.claude/projects/*/*.jsonl, ~/.gemini/antigravity-cli/brain/*, ~/.codex/sessions/*, ~/.gemini/tmp/*/chats/*) ----------
 // Incremental scan: jsonl files are append-only, so store the offset and read only new data.
 const SCAN_CACHE_FILE = path.join(DATA, 'sessions-cache.json');
-const SCAN_V = 2; // bump when aggregation changes → rescan from scratch
+const SCAN_V = 5; // bump when aggregation changes → rescan from scratch
 const scanCache = readJSON(SCAN_CACHE_FILE, {}) || {};
 for (const k of Object.keys(scanCache)) if (scanCache[k].v !== SCAN_V) delete scanCache[k];
 
-// ---------- Claude accounts: the user switches accounts often → record which account was logged in when, to split tokens per account ----------
+// ---------- Accounts: the user switches accounts often → record which account was logged in when, to split tokens per account ----------
 const ACCT_FILE = path.join(DATA, 'accounts.json');
 const acct = Object.assign({ timeline: [], limits: {} }, readJSON(ACCT_FILE, {}));
 function currentAccount() {
   const a = (readJSON(CLAUDE_JSON, {}) || {}).oauthAccount;
-  if (!a || !a.emailAddress) return null;
-  return { email: a.emailAddress, name: a.displayName || a.fullName || '', org: a.organizationName || '', plan: a.organizationType || a.billingType || '', tier: a.userRateLimitTier || a.organizationRateLimitTier || '', since: a.profileFetchedAt ? Date.parse(a.profileFetchedAt) || null : null };
+  if (a && a.emailAddress) {
+    return { email: a.emailAddress, name: a.displayName || a.fullName || '', org: a.organizationName || '', plan: a.organizationType || a.billingType || '', tier: a.userRateLimitTier || a.organizationRateLimitTier || '', since: a.profileFetchedAt ? Date.parse(a.profileFetchedAt) || null : null };
+  }
+  const ga = readJSON(path.join(GEMINI_DIR, 'google_accounts.json'), null);
+  if (ga && ga.active && typeof ga.active === 'string') {
+    return { email: ga.active, name: ga.active.split('@')[0], org: 'Google / Antigravity', plan: 'Google OAuth', tier: '', since: null };
+  }
+  return null;
 }
 function trackAccount() {
   const a = currentAccount();
@@ -342,32 +728,37 @@ trackAccount();
 setInterval(trackAccount, 20000);
 let scanning = false, lastScanAt = 0;
 
-function newSessionState(id, file) {
+function newSessionState(id, file, agent = 'claude') {
   return {
-    id, file, offset: 0, cwd: null, aiTitle: null, customTitle: null, firstPrompt: null,
+    id, file, agent, offset: 0, cwd: null, aiTitle: null, customTitle: null, firstPrompt: null,
     firstAt: null, lastAt: null, prompts: 0, models: {},
     tokens: { in: 0, out: 0, cr: 0, cw: 0 }, days: {}, runs: {}, recentIds: [], acct: {}, v: SCAN_V,
   };
 }
+function recordUsage(s, idKey, add, model, ts) {
+  if (idKey) {
+    if (s.recentIds.includes(idKey)) return;
+    s.recentIds.push(idKey);
+    if (s.recentIds.length > 60) s.recentIds.shift();
+  }
+  for (const k of ['in', 'out', 'cr', 'cw']) s.tokens[k] = (s.tokens[k] || 0) + (add[k] || 0);
+  const fam = modelFamily(model || s.agent);
+  if (add.out) s.models[fam] = (s.models[fam] || 0) + add.out;
+  if (ts) {
+    const dk = dayKey(ts);
+    const d = (s.days[dk] = s.days[dk] || {});
+    const b = (d[fam] = d[fam] || { in: 0, out: 0, cr: 0, cw: 0 });
+    for (const k of ['in', 'out', 'cr', 'cw']) b[k] += add[k] || 0;
+    const ak = accountAt(ts) || '?';
+    const ad = ((s.acct[ak] = s.acct[ak] || {})[dk] = s.acct[ak][dk] || { in: 0, out: 0, cr: 0, cw: 0 });
+    for (const k of ['in', 'out', 'cr', 'cw']) ad[k] += add[k] || 0;
+  }
+}
 function addUsage(s, msg, ts) {
   const u = msg.usage;
   if (!u || !msg.id || msg.model === '<synthetic>') return;
-  if (s.recentIds.includes(msg.id)) return; // each content block is its own line with the same message id
-  s.recentIds.push(msg.id);
-  if (s.recentIds.length > 40) s.recentIds.shift();
   const add = { in: u.input_tokens || 0, out: u.output_tokens || 0, cr: u.cache_read_input_tokens || 0, cw: u.cache_creation_input_tokens || 0 };
-  for (const k in add) s.tokens[k] += add[k];
-  const fam = modelFamily(msg.model);
-  s.models[fam] = (s.models[fam] || 0) + add.out;
-  if (ts) {
-    const d = (s.days[dayKey(ts)] = s.days[dayKey(ts)] || {});
-    const b = (d[fam] = d[fam] || { in: 0, out: 0, cr: 0, cw: 0 });
-    for (const k in add) b[k] += add[k];
-    // by the account logged in at that time ('?' = before the Hub started tracking)
-    const ak = accountAt(ts) || '?';
-    const ad = ((s.acct[ak] = s.acct[ak] || {})[dayKey(ts)] = s.acct[ak][dayKey(ts)] || { in: 0, out: 0, cr: 0, cw: 0 });
-    for (const k in add) ad[k] += add[k];
-  }
+  recordUsage(s, msg.id, add, msg.model, ts);
 }
 function userText(content) {
   if (typeof content === 'string') return content;
@@ -421,7 +812,7 @@ async function scanFile(file, id) {
   const st = fs.statSync(file);
   let s = scanCache[file];
   if (s && s.offset === st.size) return s;
-  if (!s || st.size < s.offset) s = newSessionState(id, file); // file was rewritten -> rescan from the start
+  if (!s || st.size < s.offset) s = newSessionState(id, file, 'claude'); // file was rewritten -> rescan from the start
   s.offset = await eachLine(file, s.offset, line => scanLine(s, line, false));
   // sub-agent tokens live in <id>/subagents/*.jsonl
   const subdir = path.join(path.dirname(file), id, 'subagents');
@@ -438,16 +829,261 @@ async function scanFile(file, id) {
   return s;
 }
 
+// ---------- Antigravity (`agy`) & Codex session scanners ----------
+let sqliteMod = undefined;
+function getSqlite() {
+  if (sqliteMod !== undefined) return sqliteMod;
+  const origEmit = process.emitWarning;
+  process.emitWarning = (w, ...args) => {
+    if (args[0] === 'ExperimentalWarning' || (w && w.name === 'ExperimentalWarning')) return;
+    return origEmit.call(process, w, ...args);
+  };
+  try { sqliteMod = require('node:sqlite'); } catch { sqliteMod = null; }
+  return sqliteMod;
+}
+function agyMetaMap() {
+  const byId = {};
+  const settings = readJSON(path.join(AGY_DIR, 'settings.json'), {}) || {};
+  const defaultModel = settings.model || 'Gemini';
+  const defaultWs = Array.isArray(settings.trustedWorkspaces) && settings.trustedWorkspaces[0] ? settings.trustedWorkspaces[0] : null;
+  const histFile = path.join(AGY_DIR, 'history.jsonl');
+  if (exists(histFile)) {
+    try {
+      for (const l of fs.readFileSync(histFile, 'utf8').split('\n')) {
+        if (!l.trim()) continue;
+        const o = JSON.parse(l);
+        if (o.conversationId) {
+          byId[o.conversationId] = byId[o.conversationId] || {};
+          if (o.workspace) byId[o.conversationId].cwd = o.workspace;
+          if (o.display && !byId[o.conversationId].title) byId[o.conversationId].title = String(o.display).slice(0, 140);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+  const dbFile = path.join(AGY_DIR, 'conversation_summaries.db');
+  const sq = exists(dbFile) && getSqlite();
+  if (sq && sq.DatabaseSync) {
+    let db;
+    try {
+      db = new sq.DatabaseSync(dbFile, { open: true, readOnly: true });
+      const rows = db.prepare('SELECT conversation_id, title, preview, workspace_uris FROM conversation_summaries').all();
+      for (const r of rows) {
+        const cur = (byId[r.conversation_id] = byId[r.conversation_id] || {});
+        if (r.title || r.preview) cur.title = r.title || r.preview;
+        if (r.workspace_uris) {
+          try {
+            const uris = JSON.parse(r.workspace_uris);
+            if (uris && uris[0]) cur.cwd = decodeURIComponent(String(uris[0]).replace(/^file:\/\//, ''));
+          } catch { /* ignore */ }
+        }
+      }
+    } catch { /* db busy */ } finally { try { db && db.close(); } catch { /* ignore */ } }
+  }
+  return { defaultModel, defaultWs, byId };
+}
+function cleanAgyPrompt(raw) {
+  const s = String(raw || '');
+  const m = s.match(/<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/);
+  const body = m ? m[1] : s.replace(/<CONTEXT_SUMMARY>[\s\S]*?<\/CONTEXT_SUMMARY>/g, '').replace(/<ADDITIONAL_METADATA>[\s\S]*?<\/ADDITIONAL_METADATA>/g, '').replace(/<SYSTEM_MESSAGE>[\s\S]*?<\/SYSTEM_MESSAGE>/g, '');
+  return body.trim();
+}
+function scanAgyLine(s, line, defaultModel) {
+  let o;
+  try { o = JSON.parse(line); } catch { return; }
+  const ts = o.created_at ? Date.parse(o.created_at) : null;
+  if (o.type === 'USER_INPUT') {
+    if (ts) { s.firstAt = s.firstAt || ts; s.lastAt = ts; }
+    if (!s.cwd && typeof o.content === 'string') {
+      const cw = o.content.match(/Command Working Directory:\s*([^\r\n<]+)/) || o.content.match(/Active Workspaces:\s*\r?\n-\s*([^\r\n<]+)/);
+      if (cw && cw[1]) s.cwd = cw[1].trim();
+    }
+    const p = cleanAgyPrompt(o.content);
+    if (p) {
+      s.prompts++;
+      if (!s.firstPrompt) s.firstPrompt = p.slice(0, 160);
+    }
+    return;
+  }
+  if (o.type === 'PLANNER_RESPONSE') {
+    if (ts) s.lastAt = ts;
+    const hasTok = o.input_tokens !== undefined || o.output_tokens !== undefined || o.cache_read_tokens !== undefined;
+    const inp = o.input_tokens || 0, cr = o.cache_read_tokens || 0;
+    const out = hasTok
+      ? (o.output_tokens || 0) + (o.thinking_tokens || 0)
+      : Math.ceil(((o.content || '').length + (o.thinking || '').length + (o.tool_calls ? JSON.stringify(o.tool_calls).length : 0)) / 4);
+    if (inp + cr > 0) s.context = inp + cr;
+    if (inp || out || cr) recordUsage(s, 'step-' + o.step_index, { in: inp, out, cr, cw: 0 }, o.model || defaultModel || 'Gemini', ts || s.lastAt);
+  }
+}
+async function scanAgyFile(file, id, meta, defaultModel, defaultWs) {
+  const st = fs.statSync(file);
+  let s = scanCache[file];
+  if (!s || st.size < s.offset || s.agent !== 'agy') s = newSessionState(id, file, 'agy');
+  if (s.offset < st.size) s.offset = await eachLine(file, s.offset, line => scanAgyLine(s, line, defaultModel));
+  const t = taskOfSession(id);
+  if (t && t.projectPath) s.cwd = t.projectPath;
+  else if (meta && meta.cwd) s.cwd = meta.cwd;
+  else if (!s.cwd && defaultWs) s.cwd = defaultWs;
+  if (meta && meta.title) s.aiTitle = meta.title;
+  else if (t && t.title && !s.aiTitle) s.aiTitle = t.title;
+  s.size = st.size;
+  s.mtime = st.mtimeMs;
+  scanCache[file] = s;
+  return s;
+}
+function codexFiles(dir, depth = 0) {
+  if (depth > 4 || !isDir(dir)) return [];
+  const out = [];
+  for (const d of listDir(dir)) {
+    const f = path.join(dir, d.name);
+    if (d.isDirectory()) out.push(...codexFiles(f, depth + 1));
+    else if (d.isFile() && d.name.endsWith('.jsonl')) out.push(f);
+  }
+  return out;
+}
+function scanCodexLine(s, line) {
+  let o;
+  try { o = JSON.parse(line); } catch { return; }
+  const ts = o.timestamp ? Date.parse(o.timestamp) : null;
+  if (ts) { s.firstAt = s.firstAt || ts; s.lastAt = ts; }
+  if (o.type === 'session_meta' && o.payload) {
+    if (o.payload.id) s.id = o.payload.id;
+    if (o.payload.cwd && !s.cwd) s.cwd = o.payload.cwd;
+    return;
+  }
+  if (o.type === 'turn_context' && o.payload) {
+    if (o.payload.cwd && !s.cwd) s.cwd = o.payload.cwd;
+    if (o.payload.model) s.lastModel = o.payload.model;
+    return;
+  }
+  if (o.type === 'event_msg' && o.payload) {
+    const p = o.payload;
+    if (p.type === 'user_message' && p.message) {
+      s.prompts++;
+      if (!s.firstPrompt) s.firstPrompt = String(p.message).trim().slice(0, 160);
+    } else if (p.type === 'token_count' && p.info) {
+      const u = p.info.last_token_usage || p.info.total_token_usage;
+      if (u) {
+        const inp = u.input_tokens || 0, cr = u.cached_input_tokens || 0, out = (u.output_tokens || 0) + (u.reasoning_output_tokens || 0);
+        if (inp + cr > 0) s.context = inp + cr;
+        const key = 'tc-' + ((p.info.total_token_usage && p.info.total_token_usage.total_tokens) || ts || s.recentIds.length);
+        if (inp || out || cr) recordUsage(s, key, { in: inp, out, cr, cw: 0 }, s.lastModel || 'Codex', ts || s.lastAt);
+      }
+    }
+  }
+}
+async function scanCodexFile(file) {
+  const st = fs.statSync(file);
+  let s = scanCache[file];
+  const m = path.basename(file, '.jsonl').match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+  const fallbackId = m ? m[1] : path.basename(file, '.jsonl');
+  if (!s || st.size < s.offset || s.agent !== 'codex') s = newSessionState(fallbackId, file, 'codex');
+  if (s.offset < st.size) s.offset = await eachLine(file, s.offset, line => scanCodexLine(s, line));
+  const t = taskOfSession(s.id);
+  if (t && t.projectPath) s.cwd = t.projectPath;
+  s.size = st.size;
+  s.mtime = st.mtimeMs;
+  scanCache[file] = s;
+  return s;
+}
+function scanGeminiFile(file, fallbackCwd) {
+  const st = fs.statSync(file);
+  let s = scanCache[file];
+  if (s && s.offset === st.size && s.agent === 'gemini') return s;
+  const o = readJSON(file, null);
+  if (!o || !o.sessionId) return null;
+  s = newSessionState(o.sessionId, file, 'gemini');
+  s.offset = st.size;
+  s.size = st.size;
+  s.mtime = st.mtimeMs;
+  s.firstAt = o.startTime ? Date.parse(o.startTime) : st.mtimeMs;
+  s.lastAt = o.lastUpdated ? Date.parse(o.lastUpdated) : st.mtimeMs;
+  const t = taskOfSession(s.id);
+  s.cwd = (t && t.projectPath) || fallbackCwd || HOME;
+  for (const m of o.messages || []) {
+    const ts = m.timestamp ? Date.parse(m.timestamp) : s.lastAt;
+    if (ts) s.lastAt = ts;
+    if (m.type === 'user') {
+      const txt = Array.isArray(m.content) ? m.content.map(c => c.text || '').join('\n').trim() : String(m.content || '').trim();
+      if (txt) {
+        s.prompts++;
+        if (!s.firstPrompt) s.firstPrompt = txt.slice(0, 160);
+      }
+    } else if (m.type === 'gemini' && m.tokens) {
+      const inp = m.tokens.input || 0, cr = m.tokens.cached || 0, out = (m.tokens.output || 0) + (m.tokens.thoughts || 0);
+      if (inp + cr > 0) s.context = inp + cr;
+      if (inp || out || cr) recordUsage(s, m.id || ('gm-' + ts), { in: inp, out, cr, cw: 0 }, m.model || 'Gemini', ts);
+    }
+  }
+  scanCache[file] = s;
+  return s;
+}
+
 async function scanSessions() {
   if (scanning) return;
   scanning = true;
   try {
+    // 1. Claude Code sessions (~/.claude/projects/*/*.jsonl)
     for (const d of listDir(SESSIONS_DIR).filter(d => d.isDirectory())) {
       for (const f of listDir(path.join(SESSIONS_DIR, d.name)).filter(f => f.isFile() && f.name.endsWith('.jsonl'))) {
         try { await scanFile(path.join(SESSIONS_DIR, d.name, f.name), f.name.slice(0, -6)); } catch { /* file is mid-write */ }
       }
     }
-    for (const f of Object.keys(scanCache)) if (!exists(f)) delete scanCache[f];
+    // 2. Antigravity sessions (~/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl)
+    const agyBrain = path.join(AGY_DIR, 'brain');
+    if (isDir(agyBrain)) {
+      const { defaultModel, defaultWs, byId } = agyMetaMap();
+      for (const d of listDir(agyBrain).filter(d => d.isDirectory())) {
+        const tf = path.join(agyBrain, d.name, '.system_generated', 'logs', 'transcript.jsonl');
+        if (exists(tf)) {
+          try { await scanAgyFile(tf, d.name, byId[d.name], defaultModel, defaultWs); } catch { /* file is mid-write */ }
+        }
+      }
+    }
+    // 3. Codex sessions (~/.codex/sessions/**/*.jsonl)
+    for (const cf of codexFiles(path.join(CODEX_DIR, 'sessions'))) {
+      try { await scanCodexFile(cf); } catch { /* file is mid-write */ }
+    }
+    // 4. Gemini CLI sessions (~/.gemini/tmp/*/chats/session-*.json)
+    const gmTmp = path.join(GEMINI_DIR, 'tmp');
+    for (const d of listDir(gmTmp).filter(e => e.isDirectory())) {
+      const prFile = path.join(gmTmp, d.name, '.project_root');
+      let cwd = null;
+      if (exists(prFile)) { try { cwd = fs.readFileSync(prFile, 'utf8').trim(); } catch { /* ignore */ } }
+      const chatsDir = path.join(gmTmp, d.name, 'chats');
+      for (const f of listDir(chatsDir).filter(e => e.isFile() && e.name.endsWith('.json'))) {
+        try { scanGeminiFile(path.join(chatsDir, f.name), cwd); } catch { /* ignore */ }
+      }
+    }
+    // 4. Clean up deleted files, then ensure every Hub task with tokens is represented
+    for (const f of Object.keys(scanCache)) if (!f.startsWith('hub-task:') && !exists(f)) delete scanCache[f];
+    for (const t of tasks.values()) {
+      if (!t.projectPath) continue;
+      const sid = t.sessionId || t.historySessionId || ('task-' + t.id);
+      let s = Object.values(scanCache).find(x => x.id === sid);
+      const tk = t.tokens || { in: 0, out: 0, cr: 0, cw: 0 };
+      if (!s && (tk.out || tk.in || tk.cr || t.runs)) {
+        const key = 'hub-task:' + sid;
+        s = scanCache[key] = newSessionState(sid, logFile(t.id), t.agent || 'claude');
+        s.cwd = t.projectPath; s.aiTitle = t.title; s.firstPrompt = t.title;
+        s.firstAt = t.createdAt; s.lastAt = t.updatedAt || t.createdAt; s.mtime = s.lastAt;
+        s.prompts = Math.max(1, t.runs || 1);
+      }
+      if (s) {
+        if (!s.cwd) s.cwd = t.projectPath;
+        const diff = {
+          in: Math.max(0, (tk.in || 0) - (s.tokens.in || 0)),
+          out: Math.max(0, (tk.out || 0) - (s.tokens.out || 0)),
+          cr: Math.max(0, (tk.cr || 0) - (s.tokens.cr || 0)),
+          cw: Math.max(0, (tk.cw || 0) - (s.tokens.cw || 0)),
+        };
+        if (diff.in || diff.out || diff.cr || diff.cw) {
+          recordUsage(s, null, diff, t.model || t.activeModel || t.agent, t.updatedAt || t.createdAt || Date.now());
+        }
+        if (t.context && !s.context) s.context = t.context;
+        else if (s.context && !t.context) t.context = s.context;
+      }
+    }
     writeJSON(SCAN_CACHE_FILE, scanCache);
     lastScanAt = Date.now();
     broadcast({ type: 'sessions-updated' });
@@ -472,7 +1108,15 @@ function loadBgAgents() {
 }
 function refreshBgAgents() { if (Date.now() - bgAgents.at >= 30000) loadBgAgents(); }
 const bgFresh = maxAge => (Date.now() - bgAgents.at < maxAge ? Promise.resolve(bgAgents.map) : loadBgAgents());
-const sessionCost = s => Object.values(s.runs || {}).reduce((a, b) => a + b, 0);
+const sessionCost = s => {
+  const runSum = Object.values(s.runs || {}).reduce((a, b) => a + b, 0);
+  if (runSum > 0) return runSum;
+  let est = 0;
+  for (const fams of Object.values(s.days || {})) {
+    for (const [fam, u] of Object.entries(fams)) est += estimateCost(u, fam);
+  }
+  return est || estimateCost(s.tokens, modelFamily(s.agent));
+};
 // Every CLI session a Hub chat has gone through: the session it was opened from (unless forked — the original then
 // lives on separately), the ones left behind by /clear or an agent switch, and the current one. One chat = one entry.
 const sessionChain = t => [...new Set([t.fork ? null : t.historySessionId, ...(t.pastSessions || []).map(x => x.sessionId), t.sessionId].filter(Boolean))];
@@ -489,7 +1133,7 @@ function sessionList(project, lang = 'vi') {
   const list = Object.values(scanCache)
     .filter(s => s.cwd && (s.prompts > 0 || s.tokens.out > 0) && (!project || s.cwd === project))
     .map(s => ({
-      id: s.id, cwd: s.cwd, project: path.basename(s.cwd), projectDisplay: tilde(s.cwd),
+      id: s.id, agent: s.agent || 'claude', cwd: s.cwd, project: path.basename(s.cwd), projectDisplay: tilde(s.cwd),
       title: sessTitle(s, names, lang), renamed: !!names[s.id],
       firstPrompt: s.firstPrompt, firstAt: s.firstAt, lastAt: s.lastAt || s.mtime, prompts: s.prompts,
       tokens: s.tokens, cost: sessionCost(s), models: s.models, size: s.size,
@@ -531,6 +1175,30 @@ async function sessionTranscript(id, before) {
   const s = findSession(id);
   if (!s || !exists(s.file)) return [];
   const evs = [];
+  if (s.agent === 'gemini' || s.file.endsWith('.json')) {
+    const o = readJSON(s.file, null);
+    for (const m of (o && o.messages) || []) {
+      const at = m.timestamp ? Date.parse(m.timestamp) : 0;
+      if (before && at > before) continue;
+      if (m.type === 'user') {
+        const txt = Array.isArray(m.content) ? m.content.map(c => c.text || '').join('\n').trim() : String(m.content || '').trim();
+        if (txt) evs.push({ k: 'user', text: txt, at });
+      } else if (m.type === 'gemini') {
+        if (Array.isArray(m.thoughts) && m.thoughts.length) {
+          const th = m.thoughts.map(x => (x.subject ? `**${x.subject}**\n` : '') + (x.description || '')).join('\n\n').trim();
+          if (th) evs.push({ k: 'thinking', text: clip(th, 3000), at });
+        }
+        for (const tc of m.toolCalls || []) {
+          evs.push({ k: 'tool', id: tc.id || tc.name, name: tc.name || 'tool', input: tc.args || {}, at });
+          const out = Array.isArray(tc.result) ? tc.result.map(r => (r.functionResponse && r.functionResponse.response && r.functionResponse.response.output) || '').join('\n') : '';
+          if (out) evs.push({ k: 'tool_result', id: tc.id || tc.name, isError: false, text: clip(String(out), 3000), at });
+        }
+        const txt = typeof m.content === 'string' ? m.content.trim() : Array.isArray(m.content) ? m.content.map(c => c.text || '').join('\n').trim() : '';
+        if (txt) evs.push({ k: 'text', text: txt, at });
+      }
+    }
+    return evs.slice(-500);
+  }
   await eachLine(s.file, 0, line => lineToEvents(line, evs, before));
   return evs.slice(-500);
 }
@@ -554,31 +1222,55 @@ function sessionTail(id, offset, lang = 'vi') {
   return { offset: start + skip + Buffer.byteLength(text.slice(0, end + 1)), size, events: evs.slice(-600), mtime: fs.statSync(s.file).mtimeMs, title: sessTitle(s, undefined, lang), cwd: s.cwd };
 }
 function lineToEvents(line, evs, before) {
-  {
-    if (!(line.includes('"type":"user"') || line.includes('"type":"assistant"'))) return;
-    if (line.includes('"type":"api-request')) return;
-    let o;
-    try { o = JSON.parse(line); } catch { return; }
-    if (o.isSidechain || !o.message || (o.type !== 'user' && o.type !== 'assistant')) return;
+  if (line.includes('"type":"api-request')) return;
+  let o;
+  try { o = JSON.parse(line); } catch { return; }
+  // Antigravity (`agy`) transcript.jsonl format
+  if (o.type === 'USER_INPUT' || o.type === 'PLANNER_RESPONSE' || o.type === 'GENERIC') {
+    const at = o.created_at ? Date.parse(o.created_at) : 0;
+    if (before && at > before) return;
+    if (o.type === 'USER_INPUT') {
+      const t = cleanAgyPrompt(o.content);
+      if (t) evs.push({ k: 'user', text: t, at });
+    } else if (o.type === 'PLANNER_RESPONSE') {
+      if (o.thinking && String(o.thinking).trim()) evs.push({ k: 'thinking', text: clip(String(o.thinking), 3000), at });
+      if (Array.isArray(o.tool_calls)) {
+        o.tool_calls.forEach((tc, idx) => evs.push({ k: 'tool', id: `s${o.step_index}_${idx}`, name: tc.name || 'tool', input: tc.args || {}, at }));
+      }
+      if (o.content && String(o.content).trim()) evs.push({ k: 'text', text: String(o.content), at });
+    }
+    return;
+  }
+  // Codex rollout jsonl format
+  if (o.type === 'event_msg' && o.payload) {
     const at = o.timestamp ? Date.parse(o.timestamp) : 0;
     if (before && at > before) return;
-    const c = o.message.content;
-    if (o.type === 'user') {
-      if (Array.isArray(c)) {
-        for (const b of c) if (b.type === 'tool_result') evs.push({ k: 'tool_result', id: b.tool_use_id, isError: !!b.is_error, text: clip(toolResultText(b.content), 3000), at });
-      }
-      if (!isRealPrompt(o)) return;
-      let t = userText(c).trim();
-      const cmd = t.match(/<command-name>([^<]+)<\/command-name>[\s\S]*?(?:<command-args>([\s\S]*?)<\/command-args>)?/);
-      if (cmd) t = `${cmd[1]} ${cmd[2] || ''}`.trim();
-      const imgs = Array.isArray(c) ? c.filter(b => b.type === 'image').length : 0;
-      evs.push({ k: 'user', text: t, files: imgs ? [{ name: tr('vi', 'server.history.images', { n: imgs }), nameKey: 'server.history.images', params: { n: imgs }, isImage: true }] : undefined, at });
-    } else {
-      for (const b of c || []) {
-        if (b.type === 'text' && b.text.trim()) evs.push({ k: 'text', text: b.text, at });
-        else if (b.type === 'thinking' && b.thinking) evs.push({ k: 'thinking', text: clip(b.thinking, 3000), at });
-        else if (b.type === 'tool_use') evs.push({ k: 'tool', id: b.id, name: b.name, input: b.input, at });
-      }
+    const p = o.payload;
+    if (p.type === 'user_message' && p.message) evs.push({ k: 'user', text: String(p.message), at });
+    else if (p.type === 'agent_message' && p.message) evs.push({ k: 'text', text: String(p.message), at });
+    else if (p.type === 'agent_reasoning' && p.text) evs.push({ k: 'thinking', text: clip(String(p.text), 3000), at });
+    return;
+  }
+  // Claude Code session jsonl format
+  if (o.isSidechain || !o.message || (o.type !== 'user' && o.type !== 'assistant')) return;
+  const at = o.timestamp ? Date.parse(o.timestamp) : 0;
+  if (before && at > before) return;
+  const c = o.message.content;
+  if (o.type === 'user') {
+    if (Array.isArray(c)) {
+      for (const b of c) if (b.type === 'tool_result') evs.push({ k: 'tool_result', id: b.tool_use_id, isError: !!b.is_error, text: clip(toolResultText(b.content), 3000), at });
+    }
+    if (!isRealPrompt(o)) return;
+    let t = userText(c).trim();
+    const cmd = t.match(/<command-name>([^<]+)<\/command-name>[\s\S]*?(?:<command-args>([\s\S]*?)<\/command-args>)?/);
+    if (cmd) t = `${cmd[1]} ${cmd[2] || ''}`.trim();
+    const imgs = Array.isArray(c) ? c.filter(b => b.type === 'image').length : 0;
+    evs.push({ k: 'user', text: t, files: imgs ? [{ name: tr('vi', 'server.history.images', { n: imgs }), nameKey: 'server.history.images', params: { n: imgs }, isImage: true }] : undefined, at });
+  } else {
+    for (const b of c || []) {
+      if (b.type === 'text' && b.text.trim()) evs.push({ k: 'text', text: b.text, at });
+      else if (b.type === 'thinking' && b.thinking) evs.push({ k: 'thinking', text: clip(b.thinking, 3000), at });
+      else if (b.type === 'tool_use') evs.push({ k: 'tool', id: b.id, name: b.name, input: b.input, at });
     }
   }
 }
@@ -615,14 +1307,37 @@ function accountUsage(sessions, keys) {
     }).sort((a, b) => (b.email === (cur && cur.email)) - (a.email === (cur && cur.email)) || b.out - a.out),
   };
 }
-// Claude Code's own long-term stats (~/.claude/stats-cache.json, like the /stats command) — kept even after session files are deleted
+// Machine-wide long-term stats (~/.claude/stats-cache.json + scanned sessions from Antigravity/Codex/Claude)
 function machineStats() {
   const st = readJSON(path.join(CLAUDE_DIR, 'stats-cache.json'), null);
-  if (!st) return null;
-  const models = Object.entries(st.modelUsage || {}).map(([m, u]) => ({ model: m, in: u.inputTokens || 0, out: u.outputTokens || 0, cr: u.cacheReadInputTokens || 0, cw: u.cacheCreationInputTokens || 0 }))
-    .filter(m => m.in + m.out + m.cr + m.cw > 0).sort((a, b) => b.out - a.out);
-  return { since: st.firstSessionDate, computed: st.lastComputedDate, sessions: st.totalSessions, messages: st.totalMessages, models,
-    daily: (st.dailyModelTokens || []).map(d => ({ day: d.date, total: Object.values(d.tokensByModel || {}).reduce((a, b) => a + b, 0) })) };
+  const byModel = {};
+  if (st && st.modelUsage) {
+    for (const [m, u] of Object.entries(st.modelUsage)) {
+      byModel[m] = { model: m, in: u.inputTokens || 0, out: u.outputTokens || 0, cr: u.cacheReadInputTokens || 0, cw: u.cacheCreationInputTokens || 0 };
+    }
+  }
+  const nonClaude = Object.values(scanCache).filter(s => (s.agent && s.agent !== 'claude') || !st);
+  let minFirst = st && st.firstSessionDate ? Date.parse(st.firstSessionDate) : Infinity;
+  let extraSessions = 0, extraPrompts = 0;
+  for (const s of nonClaude) {
+    if (!s.tokens || !(s.tokens.in || s.tokens.out || s.tokens.cr || s.tokens.cw)) continue;
+    extraSessions++;
+    extraPrompts += s.prompts || 0;
+    if (s.firstAt && s.firstAt < minFirst) minFirst = s.firstAt;
+    const label = (AGENTS[s.agent] && AGENTS[s.agent].label) || s.agent || 'Claude Code';
+    const b = (byModel[label] = byModel[label] || { model: label, in: 0, out: 0, cr: 0, cw: 0 });
+    for (const k of ['in', 'out', 'cr', 'cw']) b[k] += s.tokens[k] || 0;
+  }
+  const models = Object.values(byModel).filter(m => m.in + m.out + m.cr + m.cw > 0).sort((a, b) => b.out - a.out);
+  if (!models.length) return null;
+  return {
+    since: minFirst < Infinity ? new Date(minFirst).toISOString() : (st && st.firstSessionDate) || null,
+    computed: (st && st.lastComputedDate) || dayKey(Date.now()),
+    sessions: ((st && st.totalSessions) || 0) + extraSessions,
+    messages: ((st && st.totalMessages) || 0) + extraPrompts,
+    models,
+    daily: st && st.dailyModelTokens ? st.dailyModelTokens.map(d => ({ day: d.date, total: Object.values(d.tokensByModel || {}).reduce((a, b) => a + b, 0) })) : [],
+  };
 }
 
 // days = 0 → the entire local history. Project / session / cost tables cover exactly the selected range.
@@ -648,14 +1363,17 @@ function usageReport(days = 30) {
   const counted = new Set();
   for (const s of sessions) {
     const tok = { in: 0, out: 0, cr: 0, cw: 0 };
+    let estCost = 0;
     for (const [day, fams] of Object.entries(s.days || {})) {
       if (!byDay[day]) continue;
       for (const [fam, u] of Object.entries(fams)) {
         const b = (byDay[day][fam] = byDay[day][fam] || { in: 0, out: 0, cr: 0, cw: 0 });
         for (const k in u) { b[k] += u[k]; tok[k] += u[k]; }
+        estCost += estimateCost(u, fam);
       }
     }
-    const cost = Object.entries(s.runs || {}).filter(([ts]) => Number(ts) >= startMs).reduce((a, [, c]) => a + c, 0);
+    const runCost = Object.entries(s.runs || {}).filter(([ts]) => Number(ts) >= startMs).reduce((a, [, c]) => a + c, 0);
+    const cost = runCost > 0 ? runCost : estCost;
     if (!tok.out && !tok.in && !tok.cr && !cost) continue;
     totalCost += cost;
     const p = (projects[s.cwd] = projects[s.cwd] || { path: s.cwd, name: path.basename(s.cwd), display: tilde(s.cwd), sessions: 0, out: 0, in: 0, cr: 0, cw: 0, cost: 0 });
@@ -702,6 +1420,9 @@ for (const t of readJSON(TASKS_FILE, []) || []) {
     } catch { /* no log yet */ }
     Object.assign(t, { costUsd: base + last, costBase: base, costLast: last, costFixed: 1 });
   }
+  if (!t.costUsd && t.tokens && (t.tokens.in || t.tokens.out || t.tokens.cr)) {
+    t.costUsd = estimateCost(t.tokens, modelFamily(t.model || t.activeModel || t.agent));
+  }
   tasks.set(t.id, t);
 }
 const procs = new Map();   // id -> { child, idleTimer, restartWith }
@@ -727,7 +1448,7 @@ function renameSession(id, name) {
   return { id, title };
 }
 // ---------- Progress: current step, step count, agent todo list ----------
-const briefOf = (name, i = {}) => clip(String(i.command || i.file_path || i.path || i.pattern || i.url || i.query || i.description || i.subject || i.prompt || i.skill || i.CommandLine || i.Path || ''), 140).replace(/\s+/g, ' ');
+const briefOf = (name, i = {}) => clip(String(i.command || i.file_path || i.path || i.pattern || i.url || i.query || i.description || i.subject || i.prompt || i.skill || i.CommandLine || i.Path || i.TargetFile || i.SearchPath || i.DirectoryPath || i.toolSummary || i.Role || i.cmd || ''), 140).replace(/\s+/g, ' ');
 function progressPatch(t, name, input = {}) {
   const p = { step: { name, brief: briefOf(name, input), at: Date.now() }, steps: (t.steps || 0) + 1 };
   // Claude Code: TodoWrite replaces the whole list; TaskCreate/TaskUpdate add / edit single items
@@ -975,7 +1696,9 @@ function deliverOneShot(t, msg) {
   let text = plainText(msg);
   if (msg.skill) text = withSkill(text, msg.skill, t);
   else if (t.skill && !t.skillSent) { text = withSkill(text, t.skill, t); t.skillSent = true; }
-  const args = [...(a.extraArgs || []), ...a.args(t, text, { uploads: UPLOADS })];
+  if (t.appendSystemPrompt && !t.sysSent) { text = `<system_instructions>\n${t.appendSystemPrompt}\n</system_instructions>\n\n${text}`; t.sysSent = true; }
+  const images = (msg.files || []).filter(f => /^image\/(png|jpeg|gif|webp)$/.test(f.mime || '') && f.path && f.path.startsWith(UPLOADS + path.sep) && exists(f.path)).map(f => f.path);
+  const args = [...(a.extraArgs || []), ...a.args(t, text, { uploads: UPLOADS, images })];
   const env = { ...process.env };
   for (const k of ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SSE_PORT', 'CLAUDE_AGENT_SDK_VERSION']) delete env[k];
   const child = spawn(expandHome(a.bin), args, { cwd: t.projectPath, env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -985,33 +1708,102 @@ function deliverOneShot(t, msg) {
   broadcast({ type: 'delta', id: t.id, reset: true });
   const started = Date.now();
   let live = '', liveThink = '', gotResult = false, rawOut = '';
+  let turnUsage = { in: 0, out: 0, cr: 0, cw: 0, context: 0 };
   const tools = new Set();
   const flush = () => {
     if (liveThink.trim()) { pushEvent(t, { k: 'thinking', text: clip(liveThink, 4000) }); liveThink = ''; }
     if (live.trim()) { pushEvent(t, { k: 'text', text: live }); updateTask(t, { lastText: live.slice(0, 300) }); }
     live = ''; broadcast({ type: 'delta', id: t.id, reset: true });
   };
+  // Antigravity writes step-level token counts to ~/.gemini/antigravity-cli/brain/<sessionId>/.system_generated/logs/transcript.jsonl while running
+  let agyOffset = -1;
+  const agySeenSteps = new Set();
+  const pollTranscript = () => {
+    if (t.agent !== 'agy' || !t.sessionId) return;
+    const tf = path.join(AGY_DIR, 'brain', t.sessionId, '.system_generated', 'logs', 'transcript.jsonl');
+    if (!exists(tf)) return;
+    try {
+      const sz = fs.statSync(tf).size;
+      if (agyOffset < 0) agyOffset = Math.max(0, sz - 65536);
+      if (sz <= agyOffset) return;
+      const fd = fs.openSync(tf, 'r');
+      const chunk = Buffer.alloc(sz - agyOffset);
+      fs.readSync(fd, chunk, 0, chunk.length, agyOffset);
+      fs.closeSync(fd);
+      const raw = chunk.toString('utf8');
+      const lastNl = raw.lastIndexOf('\n');
+      if (lastNl < 0) return;
+      agyOffset += Buffer.byteLength(raw.slice(0, lastNl + 1));
+      let updated = false;
+      for (const l of raw.slice(0, lastNl).split('\n')) {
+        if (!l.trim()) continue;
+        let o;
+        try { o = JSON.parse(l); } catch { continue; }
+        if (o.type !== 'PLANNER_RESPONSE') continue;
+        const ts = o.created_at ? Date.parse(o.created_at) : 0;
+        if (ts && ts < started - 5000) continue;
+        const stepKey = `${o.step_index ?? ''}:${o.created_at || ''}`;
+        if (agySeenSteps.has(stepKey)) continue;
+        agySeenSteps.add(stepKey);
+        const inp = o.input_tokens || 0, cr = o.cache_read_tokens || 0, out = (o.output_tokens || 0) + (o.thinking_tokens || 0);
+        turnUsage.in += inp; turnUsage.cr += cr; turnUsage.out += out;
+        if (inp + cr > 0) turnUsage.context = inp + cr;
+        updated = true;
+      }
+      if (updated) {
+        if (turnUsage.context) t.context = turnUsage.context;
+        broadcast({ type: 'usage', id: t.id, context: t.context || 0, turnIn: turnUsage.in, turnCr: turnUsage.cr, turnOut: turnUsage.out });
+      }
+    } catch { /* ignore concurrent writes */ }
+  };
+  const pollTimer = t.agent === 'agy' ? setInterval(pollTranscript, 2000) : null;
   const h = {
     session(id, model, extra = {}) {
-      if (id && id !== t.sessionId) { noteSessionChange(t, id); updateTask(t, { sessionId: id }); }
-      const key = JSON.stringify([t.agent, model]);
-      if (key !== t.lastInitKey) { t.lastInitKey = key; pushEvent(t, { k: 'init', agent: t.agent, model: model || t.model || a.label, permissionMode: t.permissionMode, tools: extra.tools || 0, mcp: [], plugins: [] }); }
+      const resolvedModel = model || t.model || (t.agent === 'agy' && agyMetaMap().defaultModel) || a.label;
+      if (id && id !== t.sessionId) { noteSessionChange(t, id); updateTask(t, { sessionId: id, activeModel: resolvedModel }); }
+      else if (resolvedModel && resolvedModel !== t.activeModel) updateTask(t, { activeModel: resolvedModel });
+      if (t.agent === 'agy' && id) {
+        const tf = path.join(AGY_DIR, 'brain', id, '.system_generated', 'logs', 'transcript.jsonl');
+        if (agyOffset < 0) try { agyOffset = exists(tf) ? fs.statSync(tf).size : 0; } catch { agyOffset = 0; }
+      }
+      const key = JSON.stringify([t.agent, resolvedModel]);
+      if (key !== t.lastInitKey) { t.lastInitKey = key; pushEvent(t, { k: 'init', agent: t.agent, model: resolvedModel, permissionMode: t.permissionMode, tools: extra.tools || 0, mcp: [], plugins: [] }); }
     },
     delta(x) { live += x; broadcast({ type: 'delta', id: t.id, text: x }); },
     thinkingDelta(x) { liveThink += x; },
     flush,
+    pollTranscript,
+    usage(u = {}) {
+      if (u.in != null) turnUsage.in = u.in;
+      if (u.cr != null) turnUsage.cr = u.cr;
+      if (u.out != null) turnUsage.out = u.out;
+      if (u.context) { turnUsage.context = u.context; t.context = u.context; }
+      broadcast({ type: 'usage', id: t.id, context: t.context || 0, turnIn: turnUsage.in, turnCr: turnUsage.cr, turnOut: turnUsage.out });
+    },
+    todos(items) {
+      if (Array.isArray(items)) updateTask(t, { todos: items });
+    },
     text(x) { flush(); if (String(x).trim()) { pushEvent(t, { k: 'text', text: x }); updateTask(t, { lastText: String(x).slice(0, 300) }); } },
     thinking(x) { if (String(x).trim()) pushEvent(t, { k: 'thinking', text: clip(x, 4000) }); },
     tool(id, name, input) { if (tools.has(id)) return; tools.add(id); flush(); pushEvent(t, { k: 'tool', id, name, input }); updateTask(t, { lastText: `🔧 ${name}`, ...progressPatch(t, name, input) }); },
     toolResult(id, isError, out) { pushEvent(t, { k: 'tool_result', id, isError: !!isError, text: clip(String(out || '')) }); },
     stderr(x) { pushEvent(t, { k: 'stderr', text: clip(String(x), 4000) }); },
     result(r) {
-      flush(); gotResult = true;
+      flush(); pollTranscript(); gotResult = true;
+      const inTok = r.in || turnUsage.in || 0;
+      const outTok = r.out || turnUsage.out || 0;
+      const crTok = r.cr || turnUsage.cr || 0;
+      const cwTok = r.cw || turnUsage.cw || 0;
       const tk = t.tokens || { in: 0, out: 0, cr: 0, cw: 0 };
-      tk.in += r.in || 0; tk.out += r.out || 0; tk.cr += r.cr || 0;
+      tk.in += inTok; tk.out += outTok; tk.cr += crTok; tk.cw += cwTok;
+      const ctx = r.context || turnUsage.context || (inTok + crTok) || t.context || 0;
+      if (ctx) t.context = ctx;
       const duration = r.duration || Date.now() - started;
-      pushEvent(t, { k: 'result', ok: r.ok, ...(r.ok ? { text: '' } : r.text ? { text: r.text } : keyedText(r.textKey || 'server.result.error', r.params)), duration, turns: r.turns, out: r.out, denials: r.denials || [] });
-      updateTask(t, { status: r.ok ? 'done' : 'error', tokens: tk, durationMs: (t.durationMs || 0) + duration, denials: (t.denials || 0) + (r.denials || []).length, endedAt: Date.now() });
+      const turnCost = r.cost || estimateCost({ in: inTok, out: outTok, cr: crTok, cw: cwTok }, modelFamily(t.model || t.activeModel || t.agent));
+      const costUsd = (t.costUsd || 0) + turnCost;
+      pushEvent(t, { k: 'result', ok: r.ok, ...(r.ok ? { text: '' } : r.text ? { text: r.text } : keyedText(r.textKey || 'server.result.error', r.params)), cost: turnCost, costTotal: costUsd, duration, turns: r.turns, in: inTok, cr: crTok, out: outTok, denials: r.denials || [] });
+      updateTask(t, { status: r.ok ? 'done' : 'error', costUsd, tokens: tk, context: t.context || 0, durationMs: (t.durationMs || 0) + duration, denials: (t.denials || 0) + (r.denials || []).length, endedAt: Date.now() });
+      scanSessions();
     },
   };
   let buf = '';
@@ -1026,13 +1818,23 @@ function deliverOneShot(t, msg) {
   child.stderr.on('data', d => { errBuf += d; });
   child.on('error', e => { if (e.code === 'ENOENT') missingBin = true; else errBuf += String(e); });
   child.on('close', code => {
+    if (pollTimer) clearInterval(pollTimer);
     if (buf.trim()) onLine(buf.trim());
+    pollTranscript();
     procs.delete(t.id);
     if (!a.parse && !gotResult) { live = rawOut; h.result({ ok: code === 0, text: errBuf.trim() }); }
+    if (!gotResult && (turnUsage.in || turnUsage.out || turnUsage.cr)) {
+      const tk = t.tokens || { in: 0, out: 0, cr: 0, cw: 0 };
+      tk.in += turnUsage.in; tk.out += turnUsage.out; tk.cr += turnUsage.cr;
+      t.tokens = tk;
+      t.costUsd = (t.costUsd || 0) + estimateCost(turnUsage, modelFamily(t.model || t.activeModel || t.agent));
+      if (turnUsage.context) t.context = turnUsage.context;
+    }
     if (missingBin && t.status !== 'stopping') pushEvent(t, { k: 'stderr', ...keyedText('server.agent.binNotFound', { bin: a.bin, label: a.label, agent: t.agent }) });
     if (errBuf.trim() && (code !== 0 || !gotResult) && t.status !== 'stopping') pushEvent(t, { k: 'stderr', text: clip(errBuf.trim(), 4000) });
-    if (t.status === 'stopping') updateTask(t, { status: 'stopped' });
-    else if (!gotResult) updateTask(t, { status: code === 0 ? 'done' : 'error', exitCode: code });
+    if (t.status === 'stopping') updateTask(t, { status: 'stopped', tokens: t.tokens, context: t.context || 0 });
+    else if (!gotResult) updateTask(t, { status: code === 0 ? 'done' : 'error', exitCode: code, tokens: t.tokens, context: t.context || 0 });
+    if (!gotResult) scanSessions();
     const next = (t.after || []).shift();
     if (next) deliverOneShot(t, next);
     schedule();
@@ -1083,8 +1885,22 @@ function pluginSkills() {
 function resolveSkills(project) {
   const factory = skillDir(FACTORY_SKILLS, 'factory');
   for (const extra of (CFG.skillsDirs || []).map(expandHome)) Object.assign(factory, skillDir(extra, 'factory'));
-  const user = skillDir(path.join(CLAUDE_DIR, 'skills'), 'user');
-  const proj = project ? skillDir(path.join(project, '.claude', 'skills'), 'project') : {};
+  const user = Object.assign(
+    {},
+    skillDir(path.join(AGY_DIR, 'builtin', 'skills'), 'user'),
+    skillDir(path.join(CODEX_DIR, 'skills'), 'user'),
+    skillDir(path.join(AGENTS_DIR, 'skills'), 'user'),
+    skillDir(path.join(GEMINI_DIR, 'config', 'skills'), 'user'),
+    skillDir(path.join(CLAUDE_DIR, 'skills'), 'user'),
+  );
+  const proj = project ? Object.assign(
+    {},
+    skillDir(path.join(project, '.codex', 'skills'), 'project'),
+    skillDir(path.join(project, '.gemini', 'skills'), 'project'),
+    skillDir(path.join(project, '.agent', 'skills'), 'project'),
+    skillDir(path.join(project, '.agents', 'skills'), 'project'),
+    skillDir(path.join(project, '.claude', 'skills'), 'project'),
+  ) : {};
   // native: skills of installed plugins (<plugin>:<skill>, readable SKILL.md) + commands the CLI reported for this project
   const plug = pluginSkills();
   const native = [...new Set([...(slashByProject[project] || slashByProject[''] || []), ...Object.keys(plug)])];
@@ -1210,7 +2026,7 @@ function newTask(p, body, lang = 'vi') {
     id: crypto.randomBytes(6).toString('hex'),
     title: (body.title || body.prompt || tr(lang, 'server.task.defaultTitle')).split('\n')[0].slice(0, 90),
     projectPath: p, projectName: path.basename(p), projectDisplay: tilde(p),
-    agent: AGENTS[body.agent] ? body.agent : 'claude',
+    agent: AGENTS[body.agent] ? body.agent : defaultAgentKey(),
     model: body.model || null, effort: body.effort || null,
     permissionMode: body.permissionMode || null,
     plugins: Array.isArray(body.plugins) ? body.plugins : [],
@@ -1271,7 +2087,9 @@ function saveUpload(req, name) {
 }
 
 function openTerminal(cwd, sessionId, attachId, cmdOverride) {
-  const cmd = cmdOverride || (attachId ? `claude attach ${attachId}` : sessionId ? `claude --resume ${sessionId}` : 'claude');
+  const defAg = AGENTS[defaultAgentKey()];
+  const defBin = (defAg && defAg.bin) || 'claude';
+  const cmd = cmdOverride || (attachId ? `claude attach ${attachId}` : sessionId ? (defAg && defAg.resumeCmd ? defAg.resumeCmd({ sessionId }) : `claude --resume ${sessionId}`) : defBin);
   // for a different terminal on another machine: hub.config.json → "terminal": ["konsole", "--workdir", "{cwd}", "-e", "bash", "-lc", "{cmd}; exec bash"]
   if (Array.isArray(CFG.terminal) && CFG.terminal.length) {
     const [bin, ...rest] = CFG.terminal.map(x => String(x).replace('{cwd}', cwd).replace('{cmd}', cmd));
@@ -1341,6 +2159,46 @@ function fsWrite(root, b) {
   fs.renameSync(tmp, real);
   return { path: rel, size: fs.statSync(real).size, mtime: fs.statSync(real).mtimeMs };
 }
+function fsMove(root, b) {
+  const src = fsResolve(root, b.from, true);
+  if (!src.rel) throw keyedError('server.fs.outsideProject');
+  const toDir = String(b.toDir || '').replace(/^\/+|\/+$/g, '');
+  const dstRel = toDir ? toDir + '/' + path.basename(src.rel) : path.basename(src.rel);
+  const dst = fsResolve(root, dstRel, false);
+  if (src.real === dst.real) return { from: src.rel, path: dst.rel };
+  if (dst.real.startsWith(src.real + path.sep)) throw keyedError('server.fs.moveIntoSelf');
+  if (exists(dst.real)) throw keyedError('server.fs.alreadyExists', null, { code: 409 });
+  fs.mkdirSync(path.dirname(dst.real), { recursive: true });
+  fs.renameSync(src.real, dst.real);
+  return { from: src.rel, path: dst.rel };
+}
+function fsUpload(req, root, dir, name) {
+  return new Promise((resolve, reject) => {
+    const safe = path.basename(String(name || 'file')).replace(/[\0/\\]/g, '_').slice(-180) || 'file';
+    const cleanDir = String(dir || '').replace(/^\/+|\/+$/g, '');
+    const relTarget = cleanDir ? cleanDir + '/' + safe : safe;
+    let resolved;
+    try { resolved = fsResolve(root, relTarget, false); } catch (e) { return reject(e); }
+    const { real, rel } = resolved;
+    try { fs.mkdirSync(path.dirname(real), { recursive: true }); } catch (e) { return reject(e); }
+    const tmp = real + '.hub-tmp-' + process.pid + '-' + crypto.randomBytes(2).toString('hex');
+    const out = fs.createWriteStream(tmp);
+    let size = 0;
+    req.on('data', d => {
+      size += d.length;
+      if (size > MAX_UPLOAD) { req.destroy(); out.destroy(); fs.rm(tmp, () => {}); reject(keyedError('server.upload.tooLarge')); }
+    });
+    req.pipe(out);
+    out.on('finish', () => {
+      try {
+        fs.renameSync(tmp, real);
+        const st = fs.statSync(real);
+        resolve({ path: rel, name: safe, size: st.size, mtime: st.mtimeMs });
+      } catch (e) { fs.rm(tmp, () => {}); reject(e); }
+    });
+    out.on('error', e => { fs.rm(tmp, () => {}); reject(e); });
+  });
+}
 
 function serveFile(res, root, rel) {
   const f = path.join(root, path.normalize(decodeURIComponent(rel)).replace(/^(\.\.[/\\])+/, ''));
@@ -1385,16 +2243,17 @@ const server = http.createServer(async (req, res) => {
       const inHub = new Set(allProjectPaths().filter(x => !hub.hidden.includes(x)));
       const hidden = new Set(hub.hidden);
       const showDot = url.searchParams.get('dot') === '1';
+      const hasAgentCfg = dir => ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md'].some(f => exists(path.join(dir, f))) || ['.claude', '.agents', '.agent', '.gemini', '.codex'].some(d => isDir(path.join(dir, d)));
       const dirs = listDir(want)
         .filter(d => (d.isDirectory() || (d.isSymbolicLink() && isDir(path.join(want, d.name)))) && (showDot || !d.name.startsWith('.')) && d.name !== 'node_modules')
         .map(d => {
           const full = path.join(want, d.name);
-          return { name: d.name, path: full, git: exists(path.join(full, '.git')), claude: exists(path.join(full, 'CLAUDE.md')) || isDir(path.join(full, '.claude')),
+          return { name: d.name, path: full, git: exists(path.join(full, '.git')), claude: hasAgentCfg(full),
             inHub: inHub.has(full), hidden: hidden.has(full) };
         })
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
       return send(res, 200, { dir: want, display: tilde(want), parent: want === path.dirname(want) ? null : path.dirname(want), home: HOME,
-        self: { git: exists(path.join(want, '.git')), claude: exists(path.join(want, 'CLAUDE.md')) || isDir(path.join(want, '.claude')), inHub: inHub.has(want), hidden: hidden.has(want) },
+        self: { git: exists(path.join(want, '.git')), claude: hasAgentCfg(want), inHub: inHub.has(want), hidden: hidden.has(want) },
         dirs: dirs.slice(0, 500), truncated: dirs.length > 500 });
     }
     if (p === '/api/projects' && req.method === 'POST') {
@@ -1482,7 +2341,7 @@ const server = http.createServer(async (req, res) => {
         const existing = taskOfSession(s.id);
         if (existing && !b.fork) return send(res, 200, publicTask(existing));
         if (!isDir(s.cwd)) return fail(400, 'server.session.dirGone');
-        const t = newTask(s.cwd, { title: sessTitle(s, undefined, lang), resumeSessionId: s.id, fork: !!b.fork, permissionMode: b.permissionMode || 'auto' }, lang);
+        const t = newTask(s.cwd, { title: sessTitle(s, undefined, lang), agent: s.agent || defaultAgentKey(), resumeSessionId: s.id, fork: !!b.fork, permissionMode: b.permissionMode || 'auto' }, lang);
         updateTask(t, keyedField('lastText', 'server.task.pastSession'));
         return send(res, 200, publicTask(t));
       }
@@ -1498,6 +2357,13 @@ const server = http.createServer(async (req, res) => {
       const action = m[2];
       if (!action && req.method === 'GET') return send(res, 200, { ...publicTask(t), events: readEvents(t.id), alive: procs.has(t.id) });
       if (!action && req.method === 'DELETE') { deleteTask(t); return send(res, 200, { ok: true }); }
+      if (action === 'config' && req.method === 'POST') {
+        const b = await body(req);
+        const patch = {};
+        for (const k of ['permissionMode', 'model', 'effort']) if (k in b) patch[k] = b[k] || null;
+        updateTask(t, patch);
+        return send(res, 200, publicTask(t));
+      }
       if (action === 'message' && req.method === 'POST') {
         const b = await body(req);
         if ((!b.text || !b.text.trim()) && !(b.files || []).length) return fail(400, 'server.task.emptyMessage');
@@ -1602,7 +2468,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/api/commands') {
       const proj = url.searchParams.get('project') || '';
-      return send(res, 200, { commands: slashByProject[proj] || slashByProject[''] || [], exact: !!slashByProject[proj] });
+      const cfg = isDir(proj) ? projectConfig(proj) : projectConfig(HOME);
+      const discovered = uniq([...(slashByProject[proj] || slashByProject[''] || []), ...(cfg.commands.project || []), ...(cfg.commands.user || []), ...(cfg.skills.project || []), ...(cfg.skills.user || [])]);
+      return send(res, 200, { commands: discovered, exact: !!(slashByProject[proj] || isDir(proj)) });
     }
     if (p.startsWith('/api/fs/')) {
       const root = url.searchParams.get('root');
@@ -1618,6 +2486,10 @@ const server = http.createServer(async (req, res) => {
           return fs.createReadStream(real).pipe(res);
         }
         if (p === '/api/fs/write' && req.method === 'POST') { const b = await body(req); return send(res, 200, fsWrite(b.root, b)); }
+        if (p === '/api/fs/move' && req.method === 'POST') { const b = await body(req); return send(res, 200, fsMove(b.root, b)); }
+        if (p === '/api/fs/upload' && req.method === 'POST') {
+          return send(res, 200, await fsUpload(req, root, url.searchParams.get('dir') || '', url.searchParams.get('name')));
+        }
       } catch (e) {
         const code = e.code === 409 ? 409 : 400;
         if (e.key) return fail(code, e.key, e.params);
@@ -1628,7 +2500,10 @@ const server = http.createServer(async (req, res) => {
       const b = await body(req);
       if (!isDir(b.path)) return fail(400, 'server.dir.notFound');
       if (b.attachId && !/^[\w-]+$/.test(b.attachId)) return fail(400, 'server.terminal.invalidId');
-      openTerminal(b.path, b.sessionId || null, b.attachId || null);
+      const s = b.sessionId ? findSession(b.sessionId) : null;
+      const ag = AGENTS[(s && s.agent) || b.agent || defaultAgentKey()];
+      const cmd = !b.attachId && b.sessionId && ag && ag.resumeCmd ? ag.resumeCmd({ sessionId: b.sessionId }) : null;
+      openTerminal(b.path, b.sessionId || null, b.attachId || null, cmd);
       return send(res, 200, { ok: true });
     }
 
@@ -1679,7 +2554,17 @@ async function deleteSessions(ids, lang = 'vi') {
     if (linked.some(t => procs.has(t.id) || isActiveTask(t))) { skip(id, 'server.cleanup.runningInHub'); continue; }
     let mtime = 0;
     try { mtime = fs.statSync(s.file).mtimeMs; } catch { /* already gone */ }
-    if (Date.now() - mtime < 120000) { skip(id, 'server.cleanup.recentlyActive'); continue; }
+    if (mtime && Date.now() - mtime < 120000) { skip(id, 'server.cleanup.recentlyActive'); continue; }
+    if (s.agent === 'agy') {
+      const brainDir = path.join(AGY_DIR, 'brain', id);
+      const size = isDir(brainDir) ? dirSize(brainDir) : 0;
+      if (isDir(brainDir) && !(await moveToTrash(brainDir))) { skip(id, 'server.cleanup.trashFailed'); continue; }
+      delete scanCache[s.file];
+      for (const t of linked) { deleteTask(t); out.chats++; }
+      out.deleted++;
+      out.freed += size;
+      continue;
+    }
     const extra = path.join(path.dirname(s.file), id); // subagents, tool-results
     const size = (exists(s.file) ? fs.statSync(s.file).size : 0) + (isDir(extra) ? dirSize(extra) : 0);
     if (exists(s.file) && !(await moveToTrash(s.file))) { skip(id, 'server.cleanup.trashFailed'); continue; }
@@ -1729,7 +2614,7 @@ function autoCleanup() {
 
 server.listen(PORT, HOST, () => {
   console.log(`✨ Agents Factory running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-  console.log(`   Claude config: ${CLAUDE_DIR} · up to ${MAX_PARALLEL} tasks in parallel`);
+  console.log(`   Agent configs: .claude · .gemini · .agents · .codex · up to ${MAX_PARALLEL} tasks in parallel`);
   scanSessions().then(() => console.log(`   Scanned ${Object.keys(scanCache).length} past sessions`));
   setInterval(scanSessions, 60000);
   autoCleanup();

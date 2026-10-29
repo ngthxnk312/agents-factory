@@ -61,7 +61,7 @@ function renderDashboard() {
       ${dashTile(esc(t('dashboard.tile.doneToday')), doneToday.length, esc(t('dashboard.tile.failed', { n: failed.length })))}
       ${dashTile(esc(t('dashboard.tile.bgAgents')), bgAll.length ? `${bgWork.length}/${bgAll.length}` : '0', esc(bgAll.length ? t('dashboard.tile.bgWorkingTotal') : t('dashboard.tile.bgNone')), '', bgAll.length ? 'data-bglist role="button"' : '')}
       ${dashTile(esc(t('dashboard.tile.outputToday')), outToday === null ? '…' : fmtTok(outToday), out7 === null ? '' : esc(t('dashboard.tile.output7d', { n: fmtTok(out7) })), '', 'data-tab="usage" role="button"')}
-      ${dashTile(esc(t('dashboard.tile.machineCost')), mcost.total === null ? '…' : money(mcost.total) || '$0', esc(t('dashboard.tile.machineCostSub')), '', 'data-tab="usage" role="button"')}
+      ${dashTile(esc(t('dashboard.tile.machineCost')), mcost.total === null ? '…' : mcost.total ? money(mcost.total) : mcost.out ? fmtTok(mcost.out) + ' tok' : '$0', esc(t('dashboard.tile.machineCostSub')), '', 'data-tab="usage" role="button"')}
       ${limitTile('five_hour', esc(t('dashboard.tile.limit5h')))}
       ${limitTile('seven_day', esc(t('dashboard.tile.limit7d')))}
     </div>

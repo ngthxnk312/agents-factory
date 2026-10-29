@@ -73,9 +73,7 @@
       Object.assign(window.i18n, { lang, locale: LANGS[lang].locale });
       document.documentElement.lang = lang;
       apply(document.body);
-      for (const b of document.querySelectorAll('#langSwitch [data-lang]')) { const on = b.dataset.lang === lang; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }
-      const sw = document.getElementById('langSwitch');
-      if (sw) sw.setAttribute('aria-label', t('common.language'));
+      syncSwitch();
       const wait = []; // listeners push promises for async re-renders, so the cross-fade waits for them
       window.dispatchEvent(new CustomEvent('langchange', { detail: { lang, wait } }));
       return Promise.all(wait).catch(() => {});
@@ -84,18 +82,41 @@
     const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (document.startViewTransition && !reduce) document.startViewTransition(swap); else swap();
   }
-  // Language switch in the top bar (SVG icon from the sprite)
+  function flagHtml(l) {
+    return `<img src="/img/${l}.svg" class="lang-flag" alt="" width="18" height="14">`;
+  }
+  function syncSwitch() {
+    const btn = document.getElementById('langSwitch');
+    if (!btn) return;
+    const cur = LANGS[lang] || LANGS.vi;
+    btn.setAttribute('aria-label', `${t('common.language')}: ${cur.label}`);
+    btn.dataset.tip = `${t('common.language')}: ${cur.label}`;
+    btn.innerHTML = `${flagHtml(lang)}<span class="lang-code">${lang.toUpperCase()}</span><i aria-hidden="true">▾</i>`;
+  }
+  // Language dropdown in the top bar (scales cleanly as more languages are added to LANGS)
   function mountSwitch() {
     const theme = document.getElementById('themeSwitch');
     if (!theme || document.getElementById('langSwitch')) return;
-    const box = document.createElement('div');
-    box.id = 'langSwitch';
-    box.className = 'theme-switch lang-switch';
-    box.setAttribute('aria-label', t('common.language'));
-    box.innerHTML = '<svg class="svg-i" aria-hidden="true"><use href="#i-globe"/></svg>' +
-      Object.entries(LANGS).map(([l, x]) => `<button type="button" data-lang="${l}" class="${l === lang ? 'on' : ''}" aria-pressed="${l === lang}" title="${x.label}">${l.toUpperCase()}</button>`).join('');
-    theme.after(box);
-    box.addEventListener('click', e => { const b = e.target.closest('[data-lang]'); if (b) setLang(b.dataset.lang); });
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'langSwitch';
+    btn.className = 'csel lang-switch';
+    btn.setAttribute('aria-haspopup', 'menu');
+    btn.setAttribute('aria-expanded', 'false');
+    theme.after(btn);
+    syncSwitch();
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!window.ui || !window.ui.menu) return;
+      window.ui.menu(btn, Object.entries(LANGS).map(([l, x]) => ({
+        iconHtml: flagHtml(l),
+        label: x.label,
+        hint: l.toUpperCase(),
+        active: l === lang,
+        onClick: () => setLang(l),
+      })), { minWidth: 175 });
+    });
   }
 
   window.t = t;

@@ -46,5 +46,6 @@
   "slash.toast.terminalOpened": "🖥 Terminal opened",
   "slash.toast.renamed": "Renamed",
   "slash.toast.badModel": "Invalid model. Use: {list}",
-  "slash.toast.modelSet": "Model → {model} · applies from the next message"
+  "slash.toast.modelSet": "Model → {model} · applies from the next message",
+  "slash.hub.clear": "Clear the context: the agent starts a new session — still in this chat"
 }

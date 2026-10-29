@@ -23,7 +23,7 @@ node server.js        # or run in the foreground
 **Chat with agents**
 - Each Claude chat is one long-lived `claude` process (stream-json) started in the project folder, so it loads that project's MCP servers, plugins, CLAUDE.md, skills and settings exactly like a terminal session. Text streams in live; you can send follow-ups while the agent works.
 - Other agents (Antigravity, Codex, Gemini, custom) run one process per message and resume the conversation by session ID.
-- **Switch agent** (⇄ in the chat header): continue a chat with another agent — e.g. Claude → Antigravity. CLI sessions are not portable, so the Hub opens a new chat with the target agent and hands over a context brief (original request, task list, files changed, recent conversation); the two chats link to each other.
+- **Switch agent** (⇄ in the chat header): continue a chat with another agent — e.g. Claude → Antigravity. It happens in the same chat — no new chat is created. CLI sessions are not portable, so the target agent starts a fresh session and, if you keep the context, gets a brief (original request, task list, files changed, recent conversation). "Clear context" starts it clean; picking the current agent with "Clear context" is a /clear that keeps the chat.
 - Permission modes match the Claude Code terminal (`default`, `⏵⏵ accept edits`, `⏸ plan`, `⏵⏵ auto`, `bypass`) — **Shift+Tab** cycles them in the chat box.
 - `/` in the chat box lists CLI commands, skills, plugins and Hub commands (`/stop /rename /model /terminal /files /new /help`).
 - Attach files by drag & drop, paste or 📎. Links and file paths in answers are clickable (file paths open in the File panel at the right line).

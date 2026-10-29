@@ -50,5 +50,8 @@
   "server.handoff.busy": "Chat đang chạy — dừng hoặc đợi xong rồi mới chuyển agent",
   "server.handoff.from": "Tiếp nối từ {agent}: “{title}”",
   "server.handoff.to": "Đã chuyển sang {agent} — bấm để mở chat mới",
-  "server.handoff.briefShown": "📦 Bàn giao ngữ cảnh từ {agent} (yêu cầu gốc, việc đã làm, file đã sửa, trao đổi gần đây)"
+  "server.handoff.briefShown": "📦 Bàn giao context từ {agent} (yêu cầu gốc, việc đã làm, file đã sửa, trao đổi gần đây)",
+  "server.handoff.switched": "⇄ Đã chuyển từ {from} sang {agent} — có bàn giao context",
+  "server.handoff.switchedClear": "⇄ Đã chuyển từ {from} sang {agent} — context đã xoá, bắt đầu sạch",
+  "server.handoff.cleared": "🧹 Đã xoá context — {agent} bắt đầu phiên mới"
 }

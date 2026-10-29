@@ -1,16 +1,16 @@
 :root {
   color-scheme: light;
-  --bg: #f6f7fb;
-  --bg-glow-1: #e9e5ff;
-  --bg-glow-2: #dff7f2;
+  --bg: #f7f6f2;
+  --bg-glow-1: #efece4;
+  --bg-glow-2: #e8eef0;
   --panel: #ffffff;
-  --panel-2: #fbfbfe;
+  --panel-2: #fbfaf7;
   --glass: rgba(255, 255, 255, .75);
   --glass-2: rgba(255, 255, 255, .55);
-  --ink: #1f2440;
-  --muted: #6b7190;
-  --line: #e6e8f2;
-  --soft: #f1f3fa;
+  --ink: #1d1c1a;
+  --muted: #5f5c55;
+  --line: #dedbd2;
+  --soft: #f0eee8;
   --coral: #6d5dfc;
   --coral-2: #3b82f6;
   --coral-bg: #efedff;
@@ -36,13 +36,13 @@
   --ok-fill: #f3fdfb;
   --bad-border: #ffc2cf;
   --bad-fill: #fff6f8;
-  --hero: linear-gradient(135deg, #fff 0, #f4f2ff 55%, #eafaf7 100%);
-  --overlay: rgba(31, 36, 64, .28);
-  --shadow: 0 1px 2px rgba(31, 36, 64, .04), 0 6px 20px rgba(31, 36, 64, .06);
-  --shadow-lg: 0 30px 80px rgba(31, 36, 64, .25);
+  --hero: linear-gradient(135deg, #fff 0, #f6f4ee 55%, #eef3f2 100%);
+  --overlay: rgba(29, 28, 26, .28);
+  --shadow: 0 1px 2px rgba(29, 28, 26, .04), 0 6px 20px rgba(29, 28, 26, .06);
+  --shadow-lg: 0 30px 80px rgba(29, 28, 26, .25);
   /* chart colors (fixed order per model) */
   --s-opus: #2a78d6; --s-sonnet: #eb6834; --s-haiku: #1baf7a; --s-fable: #eda100; --s-other: #a3a7bd;
-  --grid: #eceef5;
+  --grid: #e9e6de;
   --radius: 14px;
   --font: 'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -50,40 +50,40 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #14161f; --bg-glow-1: #221d45; --bg-glow-2: #12302b;
-    --panel: #1d202c; --panel-2: #191b26; --glass: rgba(29, 32, 44, .8); --glass-2: rgba(25, 27, 38, .7);
-    --ink: #eceef8; --muted: #9ea3bd; --line: #2d3142; --soft: #262a39;
+    --bg: #121625; --bg-glow-1: #1f2150; --bg-glow-2: #0f2c36;
+    --panel: #1b1f30; --panel-2: #171b2a; --glass: rgba(27, 31, 48, .8); --glass-2: rgba(23, 27, 42, .7);
+    --ink: #eceef8; --muted: #9ea4c2; --line: #2b3248; --soft: #232a3d;
     --coral: #8b7dff; --coral-2: #4f8ff7; --coral-bg: #26214b; --coral-ink: #bdb4ff; --teal-bg: #12302b; --teal-ink: #5eead4;
     --sky-bg: #172544; --sky-ink: #93b8ff; --violet-bg: #261d42; --violet-ink: #c4b5fd;
     --amber-bg: #33270e; --amber-ink: #fcd34d; --rose-bg: #3a1720; --rose-ink: #fda4b6;
     --code-bg: #0e1017; --code-ink: #e8eaf6;
     --user-bubble: linear-gradient(135deg, #262150, #1e2442); --user-border: #3e3784;
     --ok-border: #1f5f55; --ok-fill: #142a27; --bad-border: #6b2a38; --bad-fill: #2a161c;
-    --hero: linear-gradient(135deg, #1d202c 0, #221f3f 55%, #15292b 100%);
+    --hero: linear-gradient(135deg, #1b1f30 0, #1f2147 55%, #132a33 100%);
     --overlay: rgba(0, 0, 0, .5);
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
     --shadow-lg: 0 30px 80px rgba(0, 0, 0, .55);
     --s-opus: #3987e5; --s-sonnet: #d95926; --s-haiku: #199e70; --s-fable: #c98500; --s-other: #6b7088;
-    --grid: #2a2e3d;
+    --grid: #283046;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #14161f; --bg-glow-1: #221d45; --bg-glow-2: #12302b;
-  --panel: #1d202c; --panel-2: #191b26; --glass: rgba(29, 32, 44, .8); --glass-2: rgba(25, 27, 38, .7);
-  --ink: #eceef8; --muted: #9ea3bd; --line: #2d3142; --soft: #262a39;
+  --bg: #121625; --bg-glow-1: #1f2150; --bg-glow-2: #0f2c36;
+  --panel: #1b1f30; --panel-2: #171b2a; --glass: rgba(27, 31, 48, .8); --glass-2: rgba(23, 27, 42, .7);
+  --ink: #eceef8; --muted: #9ea4c2; --line: #2b3248; --soft: #232a3d;
   --coral: #8b7dff; --coral-2: #4f8ff7; --coral-bg: #26214b; --coral-ink: #bdb4ff; --teal-bg: #12302b; --teal-ink: #5eead4;
   --sky-bg: #172544; --sky-ink: #93b8ff; --violet-bg: #261d42; --violet-ink: #c4b5fd;
   --amber-bg: #33270e; --amber-ink: #fcd34d; --rose-bg: #3a1720; --rose-ink: #fda4b6;
   --code-bg: #0e1017; --code-ink: #e8eaf6;
   --user-bubble: linear-gradient(135deg, #262150, #1e2442); --user-border: #3e3784;
   --ok-border: #1f5f55; --ok-fill: #142a27; --bad-border: #6b2a38; --bad-fill: #2a161c;
-  --hero: linear-gradient(135deg, #1d202c 0, #221f3f 55%, #15292b 100%);
+  --hero: linear-gradient(135deg, #1b1f30 0, #1f2147 55%, #132a33 100%);
   --overlay: rgba(0, 0, 0, .5);
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
   --shadow-lg: 0 30px 80px rgba(0, 0, 0, .55);
   --s-opus: #3987e5; --s-sonnet: #d95926; --s-haiku: #199e70; --s-fable: #c98500; --s-other: #6b7088;
-  --grid: #2a2e3d;
+  --grid: #283046;
 }
 
 * { box-sizing: border-box; }
@@ -792,6 +792,9 @@ body[data-files="edit"] .fx-editor { display: flex; }
 .ev.tool .subcount { color: var(--violet-ink); font-size: 11.5px; white-space: nowrap; flex: none; }
 /* the chat pane is a vertical flex: don't let rows shrink (causes thin lines) */
 .timeline > *, .bgv-tl > * { flex-shrink: 0; }
+/* long chats: skip layout/paint of older events while off-screen (keeps redraws such as a language switch fast).
+   The newest 40 stay fully laid out so "scroll to bottom" lands on real heights, not estimates. */
+.timeline > .ev:nth-last-child(n+41) { content-visibility: auto; contain-intrinsic-size: auto 64px; }
 
 /* ---------- column resize handles ---------- */
 .sidebar, .chat-rail, .files, .fx-tree { position: relative; }
@@ -846,3 +849,5 @@ body:not([data-files="edit"]) .fx-tree > .rs-h { display: none; }
 .ho-links { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; }
 .ho-link { border: 0; cursor: pointer; font-family: inherit; background: var(--violet-bg); color: var(--violet-ink); }
 .ho-link:hover { filter: brightness(.95); }
+/* language switch cross-fade (i18n.setLang → document.startViewTransition) */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .18s; }

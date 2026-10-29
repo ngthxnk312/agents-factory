@@ -50,5 +50,8 @@
   "server.handoff.busy": "This chat is running — stop it or wait before switching agents",
   "server.handoff.from": "Continued from {agent}: “{title}”",
   "server.handoff.to": "Moved to {agent} — click to open the new chat",
-  "server.handoff.briefShown": "📦 Context handoff from {agent} (original request, work done, files changed, recent conversation)"
+  "server.handoff.briefShown": "📦 Context handoff from {agent} (original request, work done, files changed, recent conversation)",
+  "server.handoff.switched": "⇄ Switched from {from} to {agent} — context handed over",
+  "server.handoff.switchedClear": "⇄ Switched from {from} to {agent} — context cleared, starting clean",
+  "server.handoff.cleared": "🧹 Context cleared — {agent} starts a new session"
 }

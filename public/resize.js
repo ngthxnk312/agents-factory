@@ -8,6 +8,12 @@ const RS = {
   files:  { sel: '.files', edge: 'left', min: 220, max: 1600, title: t('resize.target.files') },
   fxtree: { sel: '.fx-tree', edge: 'right', min: 150, max: 600, title: t('resize.target.fxtree') },
 };
+window.addEventListener('langchange', () => {
+  for (const [key, r] of Object.entries(RS)) {
+    r.title = t('resize.target.' + key);
+    for (const h of document.querySelectorAll(`.rs-h[data-rs="${key}"]`)) h.title = t('resize.handleTip', { target: r.title });
+  }
+});
 // the File panel has 2 separate sizes: tree only, and with a file open
 const filesKey = () => (document.body.dataset.files === 'edit' ? 'filesEdit' : 'filesTree');
 

@@ -9,7 +9,6 @@
   "server.session.notFound": "Session not found",
   "server.session.dirGone": "The session's folder no longer exists",
   "server.session.untitled": "(untitled)",
-  "server.history.images": "{n} images",
   "server.task.notFound": "Task not found",
   "server.task.defaultTitle": "Chat session",
   "server.task.pastSession": "Past session — send a message to continue",

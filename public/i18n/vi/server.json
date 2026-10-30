@@ -9,7 +9,6 @@
   "server.session.notFound": "Không thấy phiên",
   "server.session.dirGone": "Thư mục của phiên không còn tồn tại",
   "server.session.untitled": "(không tiêu đề)",
-  "server.history.images": "{n} ảnh",
   "server.task.notFound": "Không thấy task",
   "server.task.defaultTitle": "Phiên chat",
   "server.task.pastSession": "Phiên cũ — nhắn để tiếp tục",

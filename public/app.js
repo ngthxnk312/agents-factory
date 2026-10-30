@@ -104,7 +104,9 @@ function md(src) {
   const links = [];
   const keep = html => { links.push(html); return `\u0001${links.length - 1}\u0001`; };
   const imgTag = (rawUrl, alt = '', w = '', h = '') => {
-    const src = /^https?:\/\/|^\//.test(rawUrl) ? rawUrl
+    // a filesystem path (not one of the Hub's own routes) → served by /api/localimg
+    const src = /^~\/|^\/(?!uploads\/|api\/|img\/|i18n\/)[^/]+\//.test(rawUrl) ? `/api/localimg?path=${encodeURIComponent(rawUrl)}`
+      : /^https?:\/\/|^\//.test(rawUrl) ? rawUrl
       : (typeof fx !== 'undefined' && fx.root) ? `/api/fs/raw?root=${encodeURIComponent(fx.root)}&path=${encodeURIComponent(rawUrl.replace(/^\.\//, ''))}`
       : rawUrl;
     const wh = (w ? ` width="${w}"` : '') + (h ? ` height="${h}"` : '');
@@ -1190,6 +1192,16 @@ async function submitCompose(e) {
 function toolSummary(name, input = {}) {
   return input.command || input.file_path || input.path || input.pattern || input.url || input.query || input.description || input.prompt || input.skill || input.CommandLine || input.Path || input.TargetFile || input.SearchPath || input.DirectoryPath || input.toolSummary || input.Role || input.cmd || (Object.keys(input).length ? JSON.stringify(input) : '');
 }
+// An image the agent opened (Read of a screenshot …) → URL for a thumbnail on the tool row, or null
+const IMG_EXT = /\.(png|jpe?g|gif|webp)$/i;
+function toolImageUrl(name, input = {}) {
+  if (!/read|view|image|screenshot/i.test(name)) return null;
+  const f = input.file_path || input.path || input.AbsolutePath || input.TargetFile || input.Path;
+  if (typeof f !== 'string' || !IMG_EXT.test(f)) return null;
+  const task = state.tasks.get(state.openTask);
+  const abs = /^[/~]/.test(f) ? f : task ? `${task.projectPath}/${f.replace(/^\.\//, '')}` : null;
+  return abs && `/api/localimg?path=${encodeURIComponent(abs)}`;
+}
 function toolLabel(name) {
   const m = name.match(/^mcp__(.+?)__(.+)$/);
   return m ? `<span class="tag mcp">${esc(m[1])}</span> <span class="tname">${esc(m[2])}</span>` : `<span class="tname">${esc(name)}</span>`;
@@ -1230,7 +1242,8 @@ function evNode(ev) {
       }
       const d = document.createElement('details');
       d.className = 'ev tool' + (ev.sub ? ' sub' : '');
-      d.innerHTML = `<summary>${ev.sub ? '↳ ' : '🔧 '}${toolLabel(ev.name)}<span class="tsum">${esc(toolSummary(ev.name, ev.input))}</span><span class="tstate">${ev.sub ? '' : '<span class="tag warn">…</span>'}</span></summary><pre>${esc(JSON.stringify(ev.input, null, 2))}</pre>`;
+      const img = toolImageUrl(ev.name, ev.input);
+      d.innerHTML = `<summary>${ev.sub ? '↳ ' : '🔧 '}${toolLabel(ev.name)}<span class="tsum">${esc(toolSummary(ev.name, ev.input))}</span><span class="tstate">${ev.sub ? '' : '<span class="tag warn">…</span>'}</span>${img ? `<a class="tool-thumb" href="${esc(img)}" target="_blank" rel="noopener" title="${esc(tr('app.chat.openImage'))}"><img src="${esc(img)}" alt="" loading="lazy"></a>` : ''}</summary><pre>${esc(JSON.stringify(ev.input, null, 2))}</pre>`;
       state.toolNodes.set(ev.id, d);
       if (/^(Agent|Task)$/.test(ev.name)) { state.subHost = d; d._sub = 0; d.querySelector('.tstate').insertAdjacentHTML('beforebegin', '<span class="subcount"></span>'); }
       return d;
@@ -1532,6 +1545,69 @@ async function openFromHash() {
   } catch (err) { toast(tr('app.chat.linkErr', { msg: err.message }), true); }
 }
 window.addEventListener('hashchange', openFromHash);
+// ---------- image viewer: clicking an image in a chat opens it in a dialog instead of a new tab ----------
+function openImageViewer(src, name) {
+  const box = document.createElement('div');
+  box.className = 'img-viewer';
+  box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+  box.innerHTML = `<figure><img src="${esc(src)}" alt="${esc(name || '')}" draggable="false"><figcaption>${esc(name || '')}</figcaption></figure>
+    <div class="iv-bar">
+      <button type="button" class="icon-btn" data-ivzoom="-1" title="${esc(tr('app.viewer.zoomOut'))}">−</button>
+      <button type="button" class="icon-btn iv-pct" data-ivzoom="0" title="${esc(tr('app.viewer.reset'))}">100%</button>
+      <button type="button" class="icon-btn" data-ivzoom="1" title="${esc(tr('app.viewer.zoomIn'))}">+</button>
+      <a class="icon-btn" href="${esc(src)}" target="_blank" rel="noopener" title="${esc(tr('app.chat.openImage'))}">↗</a>
+      <button type="button" class="icon-btn" data-ivclose aria-label="${esc(tr('app.common.close'))}">✕</button></div>`;
+  const img = box.querySelector('img'), pct = box.querySelector('.iv-pct');
+  // zoom = scale relative to the fitted size; pan with the mouse while zoomed in
+  const v = { z: 1, x: 0, y: 0 };
+  const apply = () => {
+    if (v.z <= 1) { v.x = 0; v.y = 0; }
+    img.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.z})`;
+    img.classList.toggle('zoomed', v.z > 1);
+    pct.textContent = Math.round(v.z * 100) + '%';
+  };
+  // zoom keeping the point (cx, cy) under the cursor still
+  const zoomTo = (z, cx, cy) => {
+    z = Math.min(8, Math.max(0.25, z));
+    const r = img.getBoundingClientRect();
+    if (cx === undefined) { cx = r.left + r.width / 2; cy = r.top + r.height / 2; }
+    const ox = cx - (r.left + r.width / 2), oy = cy - (r.top + r.height / 2);
+    v.x -= ox * (z / v.z - 1); v.y -= oy * (z / v.z - 1); v.z = z;
+    apply();
+  };
+  const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); };
+  const onKey = e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomTo(v.z * 1.25); }
+    else if (e.key === '-') { e.preventDefault(); zoomTo(v.z / 1.25); }
+    else if (e.key === '0') { e.preventDefault(); v.z = 1; apply(); }
+  };
+  box.addEventListener('wheel', e => { e.preventDefault(); zoomTo(v.z * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX, e.clientY); }, { passive: false });
+  img.addEventListener('dblclick', e => { if (v.z === 1) zoomTo(2, e.clientX, e.clientY); else { v.z = 1; apply(); } });
+  let drag = null, moved = false;
+  img.addEventListener('pointerdown', e => { if (v.z <= 1) return; drag = { sx: e.clientX - v.x, sy: e.clientY - v.y }; moved = false; img.setPointerCapture(e.pointerId); });
+  img.addEventListener('pointermove', e => { if (!drag) return; v.x = e.clientX - drag.sx; v.y = e.clientY - drag.sy; moved = true; apply(); });
+  img.addEventListener('pointerup', () => { drag = null; });
+  box.addEventListener('click', e => {
+    const z = e.target.closest('[data-ivzoom]');
+    if (z) { const d = +z.dataset.ivzoom; if (d) zoomTo(d > 0 ? v.z * 1.25 : v.z / 1.25); else { v.z = 1; apply(); } return; }
+    if (!e.target.closest('img, .iv-bar') && !moved) close();
+    moved = false;
+  });
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(box);
+  box.querySelector('[data-ivclose]').focus();
+}
+document.addEventListener('click', e => {
+  if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return; // modifier-click still opens a tab
+  const img = e.target.closest('.ev .files a img, .tool-thumb img, img.md-img');
+  if (!img) return;
+  e.preventDefault(); e.stopPropagation();
+  const a = img.closest('a');
+  openImageViewer(a ? a.getAttribute('href') : img.getAttribute('src'), img.getAttribute('alt') || '');
+}, true);
+// screenshot deleted since (tmp folders get cleaned) → drop the thumbnail instead of showing a broken image
+document.addEventListener('error', e => { const a = e.target.closest && e.target.closest('.tool-thumb'); if (a) a.remove(); }, true);
 
 // Stick to the bottom of the chat only when the user is already there; if they scrolled up, keep position and count new updates
 const atBottom = tl => tl.scrollHeight - tl.scrollTop - tl.clientHeight < 48;

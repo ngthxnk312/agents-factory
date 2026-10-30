@@ -496,5 +496,9 @@
   "app.fp.openedName": "Opened project {name}",
   "app.init.loadErr": "Could not load data: {msg}",
   "app.sessions.cleared": "cleared {n}×",
-  "app.sessions.clearedTip": "Still one session. Each /clear makes the agent continue in a new file — currently {id}. Files:"
+  "app.sessions.clearedTip": "Still one session. Each /clear makes the agent continue in a new file — currently {id}. Files:",
+  "app.chat.openImage": "Open the full image in a new tab",
+  "app.viewer.zoomIn": "Zoom in (+, mouse wheel)",
+  "app.viewer.zoomOut": "Zoom out (−)",
+  "app.viewer.reset": "Fit to screen (0, double-click)"
 }

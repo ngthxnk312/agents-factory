@@ -5,7 +5,7 @@
 const RS = {
   side:   { sel: '.sidebar', edge: 'right', min: 180, max: 560, title: t('resize.target.side') },
   rail:   { sel: '.chat-rail', edge: 'right', min: 170, max: 520, title: t('resize.target.rail') },
-  files:  { sel: '.files', edge: 'left', min: 220, max: 1600, title: t('resize.target.files') },
+  files:  { sel: '#files', edge: 'left', min: 220, max: 1600, title: t('resize.target.files') },
   fxtree: { sel: '.fx-tree', edge: 'right', min: 150, max: 600, title: t('resize.target.fxtree') },
 };
 window.addEventListener('langchange', () => {

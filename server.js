@@ -535,49 +535,21 @@ function projectSummary(p) {
   };
 }
 
+// Projects = folders the user actually chatted in: any agent's past sessions (temp dirs excluded), folders opened
+// with Claude Code (~/.claude.json), Hub chats, and folders added by hand. Never guessed from sub-folders or
+// marker files (CLAUDE.md / AGENTS.md / .git) — that listed every child repo of a workspace.
 function allProjectPaths() {
   const cj = readJSON(CLAUDE_JSON, {}) || {};
-  const gj = readJSON(path.join(GEMINI_DIR, 'projects.json'), {}) || {};
-  const apj = readJSON(path.join(AGY_DIR, 'cache', 'projects.json'), {}) || {};
-  const gpPaths = [];
-  for (const f of listDir(path.join(GEMINI_DIR, 'config', 'projects')).filter(e => e.isFile() && e.name.endsWith('.json'))) {
-    const d = readJSON(path.join(GEMINI_DIR, 'config', 'projects', f.name), null);
-    if (!d) continue;
-    if (d.name && d.name.startsWith('/')) gpPaths.push(d.name);
-    for (const r of (d.projectResources && d.projectResources.resources) || []) {
-      if (r.folderUri && r.folderUri.startsWith('file://')) gpPaths.push(r.folderUri.slice(7));
-    }
-  }
-  for (const sub of ['history', 'tmp']) {
-    for (const d of listDir(path.join(GEMINI_DIR, sub)).filter(e => e.isDirectory())) {
-      const pr = path.join(GEMINI_DIR, sub, d.name, '.project_root');
-      if (exists(pr)) {
-        try { const root = fs.readFileSync(pr, 'utf8').trim(); if (root) gpPaths.push(root); } catch { /* ignore */ }
-      }
-    }
-  }
-  const hub = hubCfg();
-  const basePaths = [...new Set([
-    __dirname,
+  const tmp = fs.realpathSync(os.tmpdir());
+  const sessionDirs = Object.values(scanCache)
+    .filter(s => s.cwd && (s.prompts > 0 || (s.tokens && s.tokens.out > 0)) && s.cwd !== tmp && !s.cwd.startsWith(tmp + path.sep))
+    .map(s => s.cwd);
+  return [...new Set([
+    ...sessionDirs,
     ...Object.keys(cj.projects || {}),
-    ...Object.keys(gj.projects || {}),
-    ...Object.keys(apj || {}),
-    ...gpPaths,
-    ...hub.extraProjects,
+    ...[...tasks.values()].map(t => t.projectPath),
+    ...hubCfg().extraProjects,
   ])].filter(isDir);
-  // Also include immediate child git/agent repos inside discovered workspace directories
-  const childRepos = [];
-  for (const bp of basePaths) {
-    if (bp === HOME) continue;
-    for (const d of listDir(bp).filter(e => e.isDirectory() && !e.name.startsWith('.'))) {
-      const sub = path.join(bp, d.name);
-      if (exists(path.join(sub, '.git')) || exists(path.join(sub, 'CLAUDE.md')) || exists(path.join(sub, 'AGENTS.md')) || exists(path.join(sub, 'GEMINI.md'))
-        || isDir(path.join(sub, '.claude')) || isDir(path.join(sub, '.agents')) || isDir(path.join(sub, '.gemini'))) {
-        childRepos.push(sub);
-      }
-    }
-  }
-  return [...new Set([...basePaths, ...childRepos])].filter(isDir);
 }
 
 function discoverProjects() {
@@ -1199,7 +1171,7 @@ async function sessionTranscript(id, before) {
     }
     return evs.slice(-500);
   }
-  await eachLine(s.file, 0, line => lineToEvents(line, evs, before));
+  await eachLine(s.file, 0, line => lineToEvents(line, evs, before, s.id));
   return evs.slice(-500);
 }
 // Live-view a background session (terminal / claude --bg): read newly appended data from the previous byte offset
@@ -1218,10 +1190,38 @@ function sessionTail(id, offset, lang = 'vi') {
   const end = text.lastIndexOf('\n'); // last line may be mid-write → leave it for next time
   if (end < 0) return { offset: start + skip, size, events: [], mtime: fs.statSync(s.file).mtimeMs };
   const evs = [];
-  for (const line of text.slice(0, end).split('\n')) if (line) lineToEvents(line, evs, 0);
+  for (const line of text.slice(0, end).split('\n')) if (line) lineToEvents(line, evs, 0, s.id);
   return { offset: start + skip + Buffer.byteLength(text.slice(0, end + 1)), size, events: evs.slice(-600), mtime: fs.statSync(s.file).mtimeMs, title: sessTitle(s, undefined, lang), cwd: s.cwd };
 }
-function lineToEvents(line, evs, before) {
+// Image k of the user message with this uuid, decoded from the session file (null if not found).
+// Session files run to tens of MB, so each message's images are read once and kept in a small LRU cache.
+const sessionImageCache = new Map(); // `${file}|${uuid}` → Promise<[{ mime, data }]>
+function sessionImage(s, uuid, k) {
+  const key = `${s.file}|${uuid}`;
+  let p = sessionImageCache.get(key);
+  if (p) sessionImageCache.delete(key); // re-insert below = most recently used
+  else {
+    p = (async () => {
+      let found = [];
+      const needle = `"uuid":"${uuid}"`;
+      await eachLine(s.file, 0, line => {
+        if (found.length || !line.includes(needle)) return;
+        try {
+          const o = JSON.parse(line);
+          if (o.uuid !== uuid) return;
+          found = ((o.message && Array.isArray(o.message.content) && o.message.content) || [])
+            .filter(x => x.type === 'image') // same numbering as lineToEvents
+            .map(x => (x.source && x.source.type === 'base64' ? { mime: x.source.media_type || 'image/png', data: Buffer.from(x.source.data, 'base64') } : null));
+        } catch { /* not JSON */ }
+      });
+      return found;
+    })();
+  }
+  sessionImageCache.set(key, p);
+  while (sessionImageCache.size > 40) sessionImageCache.delete(sessionImageCache.keys().next().value);
+  return p.then(list => list[k] || null);
+}
+function lineToEvents(line, evs, before, sid) {
   if (line.includes('"type":"api-request')) return;
   let o;
   try { o = JSON.parse(line); } catch { return; }
@@ -1264,8 +1264,13 @@ function lineToEvents(line, evs, before) {
     let t = userText(c).trim();
     const cmd = t.match(/<command-name>([^<]+)<\/command-name>[\s\S]*?(?:<command-args>([\s\S]*?)<\/command-args>)?/);
     if (cmd) t = `${cmd[1]} ${cmd[2] || ''}`.trim();
-    const imgs = Array.isArray(c) ? c.filter(b => b.type === 'image').length : 0;
-    evs.push({ k: 'user', text: t, files: imgs ? [{ name: tr('vi', 'server.history.images', { n: imgs }), nameKey: 'server.history.images', params: { n: imgs }, isImage: true }] : undefined, at });
+    // images live base64-encoded in the session file → each one gets a URL served from it (see sessionImage)
+    const imgs = Array.isArray(c) ? c.filter(b => b.type === 'image') : [];
+    const names = [...t.matchAll(/^- (.+?) \(image, attached inline/gm)].map(m => m[1]);
+    t = t.replace(/\n*\[Files attached by the user[^\]]*\][\s\S]*$/, '').trim(); // the Hub's own file list, already shown as thumbnails
+    const files = imgs.map((b, i) => ({ name: names[i] || `image-${i + 1}`, isImage: true,
+      url: sid && o.uuid && b.source && b.source.type === 'base64' ? `/api/sessions/${sid}/image/${o.uuid}/${i}` : undefined }));
+    evs.push({ k: 'user', text: t, files: files.length ? files : undefined, at });
   } else {
     for (const b of c || []) {
       if (b.type === 'text' && b.text.trim()) evs.push({ k: 'text', text: b.text, at });
@@ -2328,6 +2333,14 @@ const server = http.createServer(async (req, res) => {
       const b = await body(req);
       return send(res, 200, await deleteSessions(b.ids || [], lang));
     }
+    const im = p.match(/^\/api\/sessions\/([\w-]+)\/image\/([\w-]+)\/(\d+)$/);
+    if (im) {
+      const s = findSession(im[1]);
+      const img = s && exists(s.file) ? await sessionImage(s, im[2], Number(im[3])) : null;
+      if (!img || !/^image\/(png|jpeg|gif|webp)$/.test(img.mime)) return fail(404, 'server.session.notFound');
+      res.writeHead(200, { 'Content-Type': img.mime, 'Cache-Control': 'private, max-age=31536000, immutable' });
+      return res.end(img.data);
+    }
     const sm = p.match(/^\/api\/sessions\/([\w-]+)\/(transcript|open|rename|tail)$/);
     if (sm) {
       if (!findSession(sm[1])) await scanSessions(); // session created after the last scan
@@ -2471,6 +2484,16 @@ const server = http.createServer(async (req, res) => {
       const cfg = isDir(proj) ? projectConfig(proj) : projectConfig(HOME);
       const discovered = uniq([...(slashByProject[proj] || slashByProject[''] || []), ...(cfg.commands.project || []), ...(cfg.commands.user || []), ...(cfg.skills.project || []), ...(cfg.skills.user || [])]);
       return send(res, 200, { commands: discovered, exact: !!(slashByProject[proj] || isDir(proj)) });
+    }
+    // images an agent shows by absolute path (screenshots in ~/.claude/jobs/…/tmp, /tmp …): image files only, under $HOME or /tmp
+    if (p === '/api/localimg') {
+      let real;
+      try { real = fs.realpathSync(path.resolve(expandHome(String(url.searchParams.get('path') || '')))); } catch { return fail(404, 'server.fs.notFound'); }
+      const type = MIME[path.extname(real).toLowerCase()];
+      if (!type || !/^image\//.test(type)) return fail(415, 'server.fs.imagesOnly');
+      if (![HOME, os.tmpdir()].some(r => real.startsWith(fs.realpathSync(r) + path.sep)) || !fs.statSync(real).isFile()) return fail(403, 'server.fs.outsideProject');
+      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" });
+      return fs.createReadStream(real).pipe(res);
     }
     if (p.startsWith('/api/fs/')) {
       const root = url.searchParams.get('root');

@@ -496,5 +496,9 @@
   "app.fp.openedName": "Đã mở project {name}",
   "app.init.loadErr": "Không tải được dữ liệu: {msg}",
   "app.sessions.cleared": "đã /clear {n} lần",
-  "app.sessions.clearedTip": "Vẫn là một phiên. Mỗi lần /clear, agent ghi tiếp sang một file mới — hiện đang ghi vào {id}. Các file:"
+  "app.sessions.clearedTip": "Vẫn là một phiên. Mỗi lần /clear, agent ghi tiếp sang một file mới — hiện đang ghi vào {id}. Các file:",
+  "app.chat.openImage": "Mở ảnh gốc ở tab mới",
+  "app.viewer.zoomIn": "Phóng to (+, cuộn chuột)",
+  "app.viewer.zoomOut": "Thu nhỏ (−)",
+  "app.viewer.reset": "Về vừa khung (0, nhấp đúp)"
 }

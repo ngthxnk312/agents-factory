@@ -1207,16 +1207,302 @@ function toolLabel(name) {
   return m ? `<span class="tag mcp">${esc(m[1])}</span> <span class="tname">${esc(m[2])}</span>` : `<span class="tname">${esc(name)}</span>`;
 }
 
+// ---------- Interactive question, option & approval cards ----------
+const QUESTION_TOOL_RE = /^(AskUserQuestion|ask_question|ask_user|request_user_input)$/i;
+const APPROVAL_TOOL_RE = /^(ExitPlanMode|ask_permission|ask_custom_permission|RequestPermissions)$/i;
+const APPROVAL_TEXT_RE = /\b(duyệt|phê duyệt|xác nhận|chấp thuận|approve|approval|confirm)\b/i;
+function cleanMdPlain(s) {
+  return String(s || '')
+    .replace(/^#{1,4}\s+/, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function normalizeToolQuestions(input = {}) {
+  const rawList = Array.isArray(input.questions) ? input.questions : (input.question || input.options ? [input] : []);
+  return rawList.map(q => {
+    const opts = (q.options || q.choices || []).map(o => {
+      if (typeof o === 'string') {
+        const rec = /^\(Recommended\)\s*/i.test(o);
+        return { label: o.replace(/^\(Recommended\)\s*/i, '').trim(), description: '', recommended: rec };
+      }
+      const lbl = String(o.label || o.title || o.value || o.text || '').trim();
+      const rec = !!o.recommended || /^\(Recommended\)\s*/i.test(lbl);
+      return { label: lbl.replace(/^\(Recommended\)\s*/i, '').trim(), description: String(o.description || o.hint || '').trim(), recommended: rec };
+    }).filter(o => o.label);
+    return {
+      header: String(q.header || q.title || '').trim(),
+      question: String(q.question || q.prompt || q.text || '').trim(),
+      multiSelect: !!(q.multiSelect || q.is_multi_select || q.multiple),
+      options: opts,
+    };
+  }).filter(q => q.question || q.options.length);
+}
+function extractQuestionsFromText(raw) {
+  const text = String(raw || '').replace(/```[\s\S]*?```/g, '').trim();
+  if (!text) return null;
+  const paras = text.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  if (!paras.length) return null;
+  const lastPara = paras[paras.length - 1];
+  if (!/\?[\s*)"'🍀😊🙏🎉✨]*$/.test(lastPara)) return null;
+
+  // Case A: The last paragraph itself is a numbered/bulleted list of questions/choices
+  const lastLines = lastPara.split('\n').map(l => l.trim()).filter(Boolean);
+  const listItemsInLast = lastLines.filter(l => /^(?:\d+[.)]|[-*•])\s+/.test(l));
+  if (listItemsInLast.length >= 2) {
+    const opts = [];
+    for (const line of listItemsInLast) {
+      const body = line.replace(/^(?:\d+[.)]|[-*•])\s+/, '');
+      const bolds = [...body.matchAll(/\*\*([^*]{2,90})\*\*/g)].map(m => cleanMdPlain(m[1]));
+      if (bolds.length >= 2 && /\b(hay|hoặc|or)\b/i.test(body)) {
+        for (const b of bolds) opts.push({ label: b });
+      } else if (bolds.length === 1) {
+        const desc = cleanMdPlain(body.replace(/\*\*[^*]+\*\*/, '').replace(/^[\s:—–-]+/, ''));
+        opts.push({ label: bolds[0], description: desc.length > 3 ? desc.slice(0, 140) : '' });
+      } else {
+        opts.push({ label: cleanMdPlain(body).slice(0, 100) });
+      }
+    }
+    const intro = lastLines.find(l => !/^(?:\d+[.)]|[-*•])\s+/.test(l)) || (paras.length > 1 ? cleanMdPlain(paras[paras.length - 2].split('\n').pop()) : '');
+    return [{ question: cleanMdPlain(intro) || tr('app.question.defaultPrompt'), options: opts, multiSelect: true }];
+  }
+
+  const qText = cleanMdPlain(lastLines[lastLines.length - 1]);
+  const isApproval = APPROVAL_TEXT_RE.test(qText);
+
+  // Case B: Top-level numbered/bulleted options in the last section right before the question
+  const lastSection = text.split(/\n\s*---+\s*\n/).pop();
+  const secParas = lastSection.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  const beforeQ = secParas.slice(0, -1).join('\n');
+  const listOpts = [];
+  for (const line of beforeQ.split('\n')) {
+    const m = line.match(/^\s?(?:(\d+)[.)]|[-*•])\s+\*\*([^*]{2,110})\*\*[:\s—–-]*(.*)/);
+    if (m) {
+      const label = cleanMdPlain(m[2]).replace(/[:：]$/, '');
+      const desc = cleanMdPlain(m[3]);
+      const rec = /khuyên dùng|recommended|tối ưu nhất/i.test(label + ' ' + desc);
+      listOpts.push({ label, description: desc.slice(0, 140), recommended: rec });
+    }
+  }
+
+  // Case C: Bolded alternatives inside the final question paragraph itself (ignoring parenthetical side notes)
+  const strippedLast = lastPara.replace(/\([^)*]*\*\*[^)]*\)/g, '');
+  const boldMatches = [...strippedLast.matchAll(/\*\*([^*]{2,90})\*\*/g)].map(m => cleanMdPlain(m[1]));
+  if (boldMatches.length >= 2 && /\b(hay|hoặc|or|chọn|muốn|thích|hơn)\b/i.test(lastPara)) {
+    const opts = boldMatches.map(b => ({ label: b }));
+    if (/kết hợp cả hai|cả hai|cả 2|both/i.test(lastPara) && !opts.some(o => /cả hai|both/i.test(o.label))) {
+      opts.push({ label: tr('app.question.bothOpt') });
+    }
+    return [{ question: qText, options: opts, multiSelect: false, approval: isApproval }];
+  }
+
+  const isYesNo = isApproval || /\b(có muốn|có cần|có hợp|có đồng ý|được không|đồng ý không|luôn không|ngay không|chốt .* không|would you like|do you want|shall i|should i)\b/i.test(qText);
+  const isChoiceLabel = l => /^(cách|lựa chọn|phương án|hướng|ý tưởng|bộ|giải pháp|option|approach|choice|solution|plan)\b/i.test(l);
+  if (listOpts.length >= 2 && listOpts.length <= 6 && (!isYesNo || listOpts.some(o => isChoiceLabel(o.label)))) {
+    return [{ question: qText, options: listOpts, multiSelect: false, approval: isApproval }];
+  }
+
+  return [{
+    question: qText,
+    options: isYesNo ? [{ label: tr('app.question.yesOpt'), recommended: true }, { label: tr('app.question.noOpt') }] : [],
+    multiSelect: false,
+    approval: isApproval,
+  }];
+}
+function buildQuestionCard(questions, isTool) {
+  const card = document.createElement('div');
+  const isApproval = questions.some(q => q.approval);
+  card.className = 'q-card ' + (isTool ? 'ev q-tool' : 'q-inline') + (isApproval ? ' ap-card' : '');
+  card.dataset.qcard = '1';
+  card.dataset.noicon = '';
+  const hasMulti = questions.some(q => q.multiSelect);
+  card.innerHTML = `
+    <div class="q-head">
+      <span class="q-badge">${isApproval ? '🛡 ' + esc(tr('app.approve.actionTitle')) : '❓ ' + esc(tr('app.question.title'))}</span>
+      <span class="q-hint">${esc(tr(hasMulti ? 'app.question.multiHint' : 'app.question.singleHint'))}</span>
+      <span class="q-done-tag tag ok">${esc(tr('app.question.answered'))}</span>
+      <button type="button" class="btn xs ghost q-toggle" data-qtoggle>${esc(tr('app.question.collapse'))}</button>
+    </div>
+    <div class="q-body">
+      ${questions.map((q, qi) => `
+        <div class="q-group" data-qgroup="${qi}" data-multi="${q.multiSelect ? '1' : ''}" data-qtitle="${esc(q.header || q.question || '')}">
+          ${q.question ? `<div class="q-title">${q.header ? `<span class="tag">${esc(q.header)}</span> ` : ''}<b>${esc(q.question)}</b></div>` : ''}
+          ${q.options && q.options.length ? `<div class="q-opts">
+            ${q.options.map((o, oi) => `
+              <div class="q-opt" data-qopt="${oi}" data-label="${esc(o.label)}" data-msg="${esc(o.sendMsg || o.label)}" data-apmode="${esc(o.apMode || '')}">
+                <span class="q-check" aria-hidden="true">✓</span>
+                <div class="q-opt-main">
+                  <span class="q-opt-lbl">${esc(o.label)}${o.recommended ? ` <span class="tag ok">${esc(tr('app.question.recommended'))}</span>` : ''}</span>
+                  ${o.description ? `<span class="q-opt-desc">${esc(o.description)}</span>` : ''}
+                </div>
+                <button type="button" class="btn xs ghost q-quick" data-qquick="${esc(o.sendMsg || o.label)}" data-qmode="${esc(o.apMode || '')}" title="${esc(tr('app.question.sendNowTip'))}">${esc(tr('app.question.sendOne'))} ➤</button>
+              </div>`).join('')}
+          </div>` : ''}
+        </div>`).join('')}
+      <div class="q-custom">
+        <input type="text" class="input q-input" placeholder="${esc(tr('app.question.customPh'))}" autocomplete="off">
+        <button type="button" class="btn sm ghost" data-qfill title="${esc(tr('app.question.toChatTip'))}">✎ ${esc(tr('app.question.toChat'))}</button>
+        <button type="button" class="btn sm primary" data-qsend>${esc(tr('app.question.submit'))} ➤</button>
+      </div>
+    </div>`;
+  return card;
+}
+function buildApprovalCard(kind, info = {}) {
+  const isPlan = kind === 'plan';
+  const card = document.createElement('div');
+  card.className = `q-card ev q-tool ap-card ap-${kind}`;
+  card.dataset.qcard = '1';
+  card.dataset.apkind = kind;
+  card.dataset.noicon = '';
+  const items = info.items || [];
+  const opts = isPlan ? [
+    { label: tr('app.approve.planAuto'), description: tr('app.approve.planAutoDesc'), apMode: 'auto', sendMsg: tr('app.approve.planApproveMsg'), recommended: true },
+    { label: tr('app.approve.planEdits'), description: tr('app.approve.planEditsDesc'), apMode: 'acceptEdits', sendMsg: tr('app.approve.planApproveMsg') },
+    { label: tr('app.approve.rejectOpt'), description: tr('app.approve.rejectOptDesc'), apMode: 'reject', sendMsg: tr('app.approve.permRejectMsg') },
+  ] : [
+    { label: tr('app.approve.allowAuto'), description: tr('app.approve.allowAutoDesc'), apMode: 'auto', sendMsg: tr('app.approve.permContinueMsg'), recommended: true },
+    { label: tr('app.approve.allowEdits'), description: tr('app.approve.allowEditsDesc'), apMode: 'acceptEdits', sendMsg: tr('app.approve.permContinueMsg') },
+    { label: tr('app.approve.allowBypass'), description: tr('app.approve.allowBypassDesc'), apMode: 'bypassPermissions', sendMsg: tr('app.approve.permContinueMsg') },
+    { label: tr('app.approve.rejectOpt'), description: tr('app.approve.rejectOptDesc'), apMode: 'reject', sendMsg: tr('app.approve.permRejectMsg') },
+  ];
+  card.innerHTML = `
+    <div class="q-head">
+      <span class="q-badge">${isPlan ? '📋 ' + esc(tr('app.approve.planTitle')) : '🛡 ' + esc(tr('app.approve.permTitle'))}</span>
+      <span class="q-hint">${esc(tr(isPlan ? 'app.approve.planHint' : 'app.approve.permHint'))}</span>
+      <span class="q-done-tag tag ok">${esc(tr('app.question.answered'))}</span>
+      <button type="button" class="btn xs ghost q-toggle" data-qtoggle>${esc(tr('app.question.collapse'))}</button>
+    </div>
+    <div class="q-body">
+      ${items.length ? `<div class="ap-denied-list">${items.map(it => `<div class="ap-denied-item"><span class="tag warn">🔧 ${esc(it.name)}</span>${it.brief ? `<code>${esc(it.brief)}</code>` : ''}</div>`).join('')}</div>` : ''}
+      ${info.plan ? `<div class="ap-plan-preview md">${md(info.plan)}</div>` : ''}
+      <div class="q-group" data-qgroup="0" data-multi="">
+        <div class="q-title"><b>${esc(tr(isPlan ? 'app.approve.planPrompt' : 'app.approve.permPrompt'))}</b></div>
+        <div class="q-opts">
+          ${opts.map((o, oi) => `
+            <div class="q-opt ${o.apMode === 'reject' ? 'ap-opt-reject' : ''}" data-qopt="${oi}" data-label="${esc(o.label)}" data-msg="${esc(o.sendMsg)}" data-apmode="${esc(o.apMode)}">
+              <span class="q-check" aria-hidden="true">✓</span>
+              <div class="q-opt-main">
+                <span class="q-opt-lbl">${esc(o.label)}${o.recommended ? ` <span class="tag ok">${esc(tr('app.question.recommended'))}</span>` : ''}</span>
+                ${o.description ? `<span class="q-opt-desc">${esc(o.description)}</span>` : ''}
+              </div>
+              <button type="button" class="btn xs ghost q-quick" data-qquick="${esc(o.sendMsg)}" data-qmode="${esc(o.apMode)}" title="${esc(tr('app.question.sendNowTip'))}">${esc(tr('app.question.sendOne'))} ➤</button>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="q-custom">
+        <input type="text" class="input q-input" placeholder="${esc(tr('app.question.customPh'))}" autocomplete="off">
+        <button type="button" class="btn sm ghost" data-qfill title="${esc(tr('app.question.toChatTip'))}">✎ ${esc(tr('app.question.toChat'))}</button>
+        <button type="button" class="btn sm primary" data-qsend>${esc(tr('app.question.submit'))} ➤</button>
+      </div>
+    </div>`;
+  return card;
+}
+function registerOpenCard(card, replaceInline = true) {
+  if (replaceInline) {
+    for (const old of state.openQCards || []) if (old.classList.contains('q-inline')) old.remove();
+    state.openQCards = (state.openQCards || []).filter(c => !c.classList.contains('q-inline'));
+  }
+  state.openQCards = state.openQCards || [];
+  state.openQCards.push(card);
+}
+function markQuestionsAnswered() {
+  for (const c of state.openQCards || []) {
+    c.classList.add('answered');
+    const b = c.querySelector('[data-qtoggle]');
+    if (b) b.textContent = tr('app.question.reopen');
+  }
+  state.openQCards = [];
+}
+async function submitQuestionCard(card, quickLabel, fillOnly, quickMode) {
+  if (!card) return;
+  const groups = $$('[data-qgroup]', card);
+  const inp = $('.q-input', card);
+  const custom = inp ? inp.value.trim() : '';
+  const parts = [];
+  let apMode = quickMode || '';
+  if (quickLabel) {
+    parts.push(quickLabel);
+  } else {
+    for (const g of groups) {
+      const pickedEls = $$('.q-opt.on', g);
+      const picked = pickedEls.map(el => el.dataset.msg || el.dataset.label).filter(Boolean);
+      for (const el of pickedEls) if (el.dataset.apmode && !apMode) apMode = el.dataset.apmode;
+      if (picked.length) {
+        parts.push(groups.length > 1 && g.dataset.qtitle ? `${g.dataset.qtitle}: ${picked.join(', ')}` : picked.join(', '));
+      }
+    }
+  }
+  if (custom) parts.push(custom);
+  const answer = parts.join(groups.length > 1 ? '\n' : ' — ').trim();
+  if (!answer) {
+    if (inp) inp.focus();
+    return toast(tr('app.question.needPick'), true);
+  }
+  const ta = $('#followText');
+  if (!ta) return;
+  if (fillOnly) {
+    ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + answer;
+    autoGrow(ta);
+    ta.focus();
+    return;
+  }
+  if (apMode && apMode !== 'reject') {
+    const sel = $('#chatPerm');
+    if (sel) {
+      if (![...sel.options].some(o => o.value === apMode)) {
+        const opt = document.createElement('option');
+        opt.value = apMode;
+        opt.textContent = permInfo(apMode)[0];
+        sel.appendChild(opt);
+      }
+      sel.value = apMode;
+      if (sel._sync) sel._sync();
+    }
+  }
+  const prevDraft = ta.value;
+  ta.value = answer;
+  autoGrow(ta);
+  await sendChat();
+  if (inp) inp.value = '';
+  card.classList.add('answered');
+  const b = card.querySelector('[data-qtoggle]');
+  if (b) b.textContent = tr('app.question.reopen');
+  if (prevDraft && prevDraft.trim() && prevDraft.trim() !== answer && !ta.value) {
+    ta.value = prevDraft;
+    autoGrow(ta);
+  }
+}
+
 function evNode(ev) {
   const div = document.createElement('div');
   switch (ev.k) {
     case 'user': {
+      markQuestionsAnswered();
       div.className = 'ev user';
       div.innerHTML = `<span class="who">${meLabel()}</span>${esc(ev.text)}` + (ev.files && ev.files.length ? `<div class="files">${ev.files.map(f => f.isImage && f.url ? `<a href="${esc(f.url)}" target="_blank"><img src="${esc(f.url)}" alt="${esc(f.name)}"></a>` : `<span class="tag">${f.isImage ? '🖼' : '📄'} ${esc(i18n.tx({ text: f.name, textKey: f.nameKey, params: f.params }))}</span>`).join('')}</div>` : '');
       if (ev.text) state.lastPrompts.push(ev.text);
       break;
     }
-    case 'text': { const ag = state.evAgent ? agentDef(state.evAgent) : curAgent(); div.className = 'ev text md'; div.innerHTML = `<span class="who" data-noicon>${esc(ag.icon)} ${esc(agentName(ag))}</span>` + md(ev.text); break; }
+    case 'text': {
+      const ag = state.evAgent ? agentDef(state.evAgent) : curAgent();
+      div.className = 'ev text md';
+      div.innerHTML = `<span class="who" data-noicon>${esc(ag.icon)} ${esc(agentName(ag))}</span>` + md(ev.text);
+      const hasToolQ = (state.openQCards || []).some(c => c.classList.contains('q-tool') && !c.classList.contains('answered'));
+      if (!hasToolQ) {
+        const qs = extractQuestionsFromText(ev.text);
+        if (qs && qs.length) {
+          for (const old of state.openQCards || []) if (old.classList.contains('q-inline')) old.remove();
+          state.openQCards = (state.openQCards || []).filter(c => !c.classList.contains('q-inline'));
+          const qCard = buildQuestionCard(qs, false);
+          div.appendChild(qCard);
+          state.openQCards.push(qCard);
+        }
+      }
+      break;
+    }
     case 'thinking': {
       const d = document.createElement('details'); d.className = 'ev thinking';
       d.innerHTML = `<summary>${tr('app.chat.thinking')}</summary><div style="white-space:pre-wrap;margin-top:6px">${esc(ev.text)}</div>`;
@@ -1240,6 +1526,25 @@ function evNode(ev) {
         }
         return null;
       }
+      if (QUESTION_TOOL_RE.test(ev.name)) {
+        const qs = normalizeToolQuestions(ev.input);
+        if (qs.length) {
+          const qCard = buildQuestionCard(qs, true);
+          state.toolNodes.set(ev.id, qCard);
+          registerOpenCard(qCard, true);
+          return qCard;
+        }
+      }
+      if (APPROVAL_TOOL_RE.test(ev.name)) {
+        const isPlan = /^ExitPlanMode$/i.test(ev.name);
+        const inObj = ev.input || {};
+        const apCard = isPlan
+          ? buildApprovalCard('plan', { plan: inObj.plan ? String(inObj.plan) : '' })
+          : buildApprovalCard('perm', { items: [{ name: inObj.tool || inObj.permission || ev.name, brief: String(toolSummary(ev.name, inObj) || '').slice(0, 140) }] });
+        state.toolNodes.set(ev.id, apCard);
+        registerOpenCard(apCard, true);
+        return apCard;
+      }
       const d = document.createElement('details');
       d.className = 'ev tool' + (ev.sub ? ' sub' : '');
       const img = toolImageUrl(ev.name, ev.input);
@@ -1251,19 +1556,39 @@ function evNode(ev) {
     case 'tool_result': {
       const d = state.toolNodes.get(ev.id);
       if (d) {
+        if (d.classList.contains('q-card')) return null;
         const s = d.querySelector('.tstate');
         if (s) s.innerHTML = ev.isError ? `<span class="tag err">${tr('app.chat.toolErr')}</span>` : `<span class="tag ok">${tr('app.chat.toolOk')}</span>`;
         const pre = document.createElement('pre'); pre.textContent = ev.text || tr('app.chat.empty'); d.appendChild(pre);
       }
       return null;
     }
-    case 'result':
+    case 'result': {
       div.className = 'ev result md ' + (ev.ok ? 'ok' : 'bad');
       div.innerHTML = `<div class="rhead"><span class="tag ${ev.ok ? 'ok' : 'err'}">${ev.ok ? tr('app.chat.turnDone') : tr('app.chat.turnErr')}</span>
         ${ev.in || ev.cr ? `<span class="tag">↑${fmtTok((ev.in || 0) + (ev.cr || 0))}</span>` : ''}${ev.out ? `<span class="tag">${tr('app.chat.outTokens', { n: fmtTok(ev.out) })}</span>` : ''}${ev.costTotal !== undefined ? `<span class="tag" title="${tr('app.chat.costTip', { total: money(ev.costTotal) })}">💰 +${money(ev.cost) || '$0'}</span>` : ev.cost ? `<span class="tag" title="${tr('app.chat.costCumTip')}">${tr('app.chat.costSession', { cost: money(ev.cost) })}</span>` : ''}${ev.duration ? `<span class="tag">⏱ ${dur(ev.duration)}</span>` : ''}
         ${ev.denials && ev.denials.length ? `<span class="tag warn" title="${tr('app.chat.deniedTip')}">${tr('app.chat.denied', { list: esc([...new Set(ev.denials)].join(', ')) })}</span>` : ''}</div>
         ${ev.ok ? '' : md((ev.textKey ? i18n.tx(ev) : ev.text) || '')}`;
+      if (ev.denials && ev.denials.length) {
+        const hasPermCard = (state.openQCards || []).some(c => c.dataset.apkind === 'perm' && !c.classList.contains('answered'));
+        if (!hasPermCard) {
+          const rawItems = (ev.denialItems && ev.denialItems.length) ? ev.denialItems : [...new Set(ev.denials)].map(name => ({ name, brief: '' }));
+          const seen = new Set();
+          const items = rawItems.filter(it => { const k = it.name + '|' + (it.brief || ''); if (seen.has(k)) return false; seen.add(k); return true; });
+          const apCard = buildApprovalCard('perm', { items });
+          registerOpenCard(apCard, false);
+          div.appendChild(apCard);
+        }
+      } else if (ev.ok && ev.planMode) {
+        const hasPlanCard = (state.openQCards || []).some(c => c.dataset.apkind === 'plan' && !c.classList.contains('answered'));
+        if (!hasPlanCard) {
+          const apCard = buildApprovalCard('plan', {});
+          registerOpenCard(apCard, true);
+          div.appendChild(apCard);
+        }
+      }
       break;
+    }
     case 'stderr': {
       const bg = /running in the background \(([\w-]+)\)/.exec(ev.text || '');
       div.className = 'ev stderr';
@@ -1317,6 +1642,7 @@ function statusLine(t) {
 async function openChat(id, reuse) {
   state.openTask = id;
   state.toolNodes.clear();
+  state.openQCards = [];
   state.live = '';
   state.lastPrompts = [];
   state.att.chat = [];
@@ -2041,12 +2367,26 @@ function openCleanup() {
 }
 
 // ---------- events ----------
-const CLICK_SEL = '[data-star],[data-hide],[data-restore],[data-path],[data-tab],[data-task],[data-compose],[data-close],[data-pick],[data-pplug],[data-useplugin],[data-closechat],[data-stop],[data-term],[data-del],[data-terminal],[data-opensess],[data-forksess],[data-termsess],[data-metric],[data-theme-set],[data-pickfile],[data-rmatt],[data-cleanup],[data-quick],[data-editws],[data-sesspick],[data-sessclear],[data-sessdel],[data-sessdel1],[data-railtoggle],[data-udays],[data-uview],[data-newpill],[data-runlist],[data-agent],[data-skillpick],[data-skillrole],[data-openfile],[data-renchat],[data-copylink],[data-bigedit],[data-bg],[data-home],[data-sessren],[data-sessproj]';
+const CLICK_SEL = '[data-star],[data-hide],[data-restore],[data-path],[data-tab],[data-task],[data-compose],[data-close],[data-pick],[data-pplug],[data-useplugin],[data-closechat],[data-stop],[data-term],[data-del],[data-terminal],[data-opensess],[data-forksess],[data-termsess],[data-metric],[data-theme-set],[data-pickfile],[data-rmatt],[data-cleanup],[data-quick],[data-editws],[data-sesspick],[data-sessclear],[data-sessdel],[data-sessdel1],[data-railtoggle],[data-udays],[data-uview],[data-newpill],[data-runlist],[data-agent],[data-skillpick],[data-skillrole],[data-openfile],[data-renchat],[data-copylink],[data-bigedit],[data-bg],[data-home],[data-sessren],[data-sessproj],[data-qopt],[data-qquick],[data-qsend],[data-qfill],[data-qtoggle]';
 document.addEventListener('click', async e => {
   const el = e.target.closest(CLICK_SEL);
   if (!el) { if (e.target.id === 'composeOverlay') closeCompose(); return; }
   const d = el.dataset;
   try {
+    if (d.qquick !== undefined) { e.stopPropagation(); return submitQuestionCard(el.closest('[data-qcard]'), d.qquick, false, d.qmode); }
+    if (d.qopt !== undefined) {
+      const grp = el.closest('[data-qgroup]');
+      if (grp && grp.dataset.multi) el.classList.toggle('on');
+      else if (grp) { const was = el.classList.contains('on'); $$('.q-opt', grp).forEach(x => x.classList.remove('on')); if (!was) el.classList.add('on'); }
+      return;
+    }
+    if (d.qsend !== undefined) return submitQuestionCard(el.closest('[data-qcard]'), null, false);
+    if (d.qfill !== undefined) return submitQuestionCard(el.closest('[data-qcard]'), null, true);
+    if (d.qtoggle !== undefined) {
+      const card = el.closest('[data-qcard]');
+      if (card) { card.classList.toggle('answered'); el.textContent = tr(card.classList.contains('answered') ? 'app.question.reopen' : 'app.question.collapse'); }
+      return;
+    }
     if (d.themeSet) return applyTheme(d.themeSet);
     if (d.railtoggle !== undefined) { layout.rail = layout.rail === 'mini' ? 'full' : 'mini'; return applyLayout(); }
     if (d.cleanup !== undefined) return openCleanup();
@@ -2157,6 +2497,10 @@ document.addEventListener('input', e => {
 
 document.addEventListener('keydown', e => {
   const a = document.activeElement;
+  if (a && a.classList.contains('q-input') && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    return submitQuestionCard(a.closest('[data-qcard]'), null, false);
+  }
   if (a && a.id === 'followText' && e.key === 'Tab' && e.shiftKey) {
     e.preventDefault();
     return cyclePermMode();

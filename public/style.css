@@ -880,3 +880,43 @@ body:not([data-files="edit"]) .fx-tree > .rs-h { display: none; }
 .img-viewer .iv-bar { position: fixed; top: 12px; right: 16px; display: flex; gap: 8px; }
 .img-viewer .iv-bar .icon-btn { background: rgba(255, 255, 255, .12); color: #fff; border-color: rgba(255, 255, 255, .2); text-decoration: none; }
 @keyframes iv-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- interactive question / option cards ---------- */
+.q-card { border: 1.5px solid var(--violet-ink); border-radius: 12px; background: var(--panel-2); padding: 10px 12px; margin-top: 10px; flex-shrink: 0; box-shadow: var(--shadow); }
+.q-card.q-tool { background: var(--panel); margin-top: 0; }
+.q-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.q-badge { font-weight: 700; font-size: 12.5px; color: var(--violet-ink); background: var(--violet-bg); padding: 2px 9px; border-radius: 999px; }
+.q-hint { font-size: 12px; color: var(--muted); flex: 1; }
+.q-done-tag { display: none; }
+.q-card.answered { border-color: var(--line); background: var(--soft); padding: 6px 10px; box-shadow: none; }
+.q-card.answered .q-body { display: none; }
+.q-card.answered .q-hint { display: none; }
+.q-card.answered .q-done-tag { display: inline-flex; }
+.q-card.answered .q-head { justify-content: flex-start; }
+.q-card.answered .q-toggle { margin-left: auto; }
+.q-body { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.q-group { display: flex; flex-direction: column; gap: 6px; }
+.q-title { font-size: 13px; color: var(--ink); line-height: 1.45; }
+.q-opts { display: flex; flex-direction: column; gap: 6px; }
+.q-opt { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s; user-select: none; }
+.q-opt:hover { border-color: var(--violet-ink); }
+.q-opt.on { border-color: var(--coral); background: var(--coral-bg); box-shadow: 0 0 0 1px var(--coral); }
+.q-check { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--line); display: grid; place-items: center; font-size: 11px; font-weight: 700; color: transparent; background: var(--panel-2); flex: none; transition: all .12s; }
+.q-group:not([data-multi="1"]) .q-check { border-radius: 999px; }
+.q-opt.on .q-check { background: var(--coral); border-color: var(--coral); color: #fff; }
+.q-opt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.q-opt-lbl { font-weight: 600; font-size: 13px; color: var(--ink); line-height: 1.35; }
+.q-opt-desc { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.q-quick { flex: none; opacity: .75; }
+.q-opt:hover .q-quick { opacity: 1; border-color: var(--coral); color: var(--coral-ink); background: var(--coral-bg); }
+.q-custom { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding-top: 2px; }
+.q-input { flex: 1; min-width: 180px; padding: 6px 10px; font-size: 12.5px; }
+.q-card.ap-card { border-color: var(--amber); }
+.q-card.ap-card .q-badge { color: var(--amber-ink); background: var(--amber-bg); }
+.q-card.ap-card .q-opt:hover { border-color: var(--amber); }
+.q-card.ap-card .ap-opt-reject.on { border-color: var(--red); background: var(--red-bg); box-shadow: 0 0 0 1px var(--red); }
+.q-card.ap-card .ap-opt-reject.on .q-check { background: var(--red); border-color: var(--red); }
+.ap-denied-list { display: flex; flex-direction: column; gap: 5px; background: var(--soft); border: 1px dashed var(--amber); border-radius: 9px; padding: 8px 10px; }
+.ap-denied-item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.ap-denied-item code { font-family: var(--mono); font-size: 11.5px; background: var(--panel); padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line); word-break: break-all; }
+.ap-plan-preview { max-height: 280px; overflow: auto; background: var(--soft); border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; font-size: 12.5px; }

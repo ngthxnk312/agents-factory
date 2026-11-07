@@ -1453,7 +1453,19 @@ function renameSession(id, name) {
   return { id, title };
 }
 // ---------- Progress: current step, step count, agent todo list ----------
-const briefOf = (name, i = {}) => clip(String(i.command || i.file_path || i.path || i.pattern || i.url || i.query || i.description || i.subject || i.prompt || i.skill || i.CommandLine || i.Path || i.TargetFile || i.SearchPath || i.DirectoryPath || i.toolSummary || i.Role || i.cmd || ''), 140).replace(/\s+/g, ' ');
+const QUESTION_TOOLS = /^(AskUserQuestion|ask_question|ask_user|request_user_input)$/i;
+const APPROVAL_TOOLS = /^(ExitPlanMode|ask_permission|ask_custom_permission|RequestPermissions)$/i;
+const briefOf = (name, i = {}) => {
+  if (QUESTION_TOOLS.test(name)) {
+    const q = (Array.isArray(i.questions) && i.questions[0] && i.questions[0].question) || i.question || i.toolSummary || '';
+    if (q) return clip(String(q), 140).replace(/\s+/g, ' ');
+  }
+  if (APPROVAL_TOOLS.test(name)) {
+    const p = i.plan || i.command || i.description || i.reason || i.toolSummary || '';
+    if (p) return clip(String(p), 140).replace(/\s+/g, ' ');
+  }
+  return clip(String(i.command || i.file_path || i.path || i.pattern || i.url || i.query || i.description || i.subject || i.prompt || i.skill || i.CommandLine || i.Path || i.TargetFile || i.SearchPath || i.DirectoryPath || i.toolSummary || i.Role || i.cmd || ''), 140).replace(/\s+/g, ' ');
+};
 function progressPatch(t, name, input = {}) {
   const p = { step: { name, brief: briefOf(name, input), at: Date.now() }, steps: (t.steps || 0) + 1 };
   // Claude Code: TodoWrite replaces the whole list; TaskCreate/TaskUpdate add / edit single items
@@ -1539,19 +1551,31 @@ function handleLine(t, line) {
     for (const b of m.message.content || []) {
       if (b.type === 'text' && b.text.trim()) { pushEvent(t, { k: 'text', text: b.text }); updateTask(t, { lastText: b.text.slice(0, 300) }); }
       else if (b.type === 'thinking' && b.thinking) pushEvent(t, { k: 'thinking', text: clip(b.thinking, 4000) });
-      else if (b.type === 'tool_use') { pushEvent(t, { k: 'tool', id: b.id, name: b.name, input: b.input }); updateTask(t, { lastText: `🔧 ${b.name}`, ...progressPatch(t, b.name, b.input) }); }
+      else if (b.type === 'tool_use') {
+        if (QUESTION_TOOLS.test(b.name)) { (t._qIds = t._qIds || new Set()).add(b.id); t._qAsked = true; }
+        pushEvent(t, { k: 'tool', id: b.id, name: b.name, input: b.input });
+        updateTask(t, { lastText: `🔧 ${b.name}`, ...progressPatch(t, b.name, b.input) });
+      }
     }
     return;
   }
   if (m.type === 'user' && m.message && Array.isArray(m.message.content)) {
     if (m.parent_tool_use_id) return;
     for (const b of m.message.content) {
-      if (b.type === 'tool_result') pushEvent(t, { k: 'tool_result', id: b.tool_use_id, isError: !!b.is_error, text: clip(toolResultText(b.content)) });
+      if (b.type === 'tool_result') {
+        const isQ = t._qIds && t._qIds.has(b.tool_use_id);
+        pushEvent(t, { k: 'tool_result', id: b.tool_use_id, isError: isQ ? false : !!b.is_error, text: clip(toolResultText(b.content)) });
+      }
     }
     return;
   }
   if (m.type === 'result') {
-    const ok = !m.is_error && m.subtype === 'success';
+    const denialItems = (m.permission_denials || [])
+      .filter(d => !QUESTION_TOOLS.test(d.tool_name))
+      .map(d => ({ name: d.tool_name, brief: briefOf(d.tool_name, d.tool_input || {}) }));
+    const rawDenials = denialItems.map(d => d.name);
+    const ok = (!m.is_error && m.subtype === 'success') || (!!t._qAsked && !rawDenials.length);
+    t._qAsked = false;
     const u = m.usage || {};
     const tk = t.tokens || { in: 0, out: 0, cr: 0, cw: 0 };
     tk.in += u.input_tokens || 0; tk.out += u.output_tokens || 0;
@@ -1562,14 +1586,14 @@ function handleLine(t, line) {
     if (cum < (t.costLast || 0)) t.costBase = (t.costBase || 0) + t.costLast; // a new process starts again from 0
     const turnCost = Math.max(0, cum - (cum >= (t.costLast || 0) ? (t.costLast || 0) : 0));
     t.costLast = cum;
-    pushEvent(t, { k: 'result', ok, text: m.result || m.subtype, cost: turnCost, costTotal: (t.costBase || 0) + cum, duration: m.duration_ms, turns: m.num_turns, out: u.output_tokens, denials: (m.permission_denials || []).map(d => d.tool_name) });
+    pushEvent(t, { k: 'result', ok, text: m.result || m.subtype, cost: turnCost, costTotal: (t.costBase || 0) + cum, duration: m.duration_ms, turns: m.num_turns, out: u.output_tokens, denials: rawDenials, denialItems, planMode: t.permissionMode === 'plan' });
     updateTask(t, {
       status: ok ? 'done' : 'error',
       costUsd: (t.costBase || 0) + cum,
       durationMs: (t.durationMs || 0) + (m.duration_ms || 0),
       tokens: tk, contextWindow: mu.contextWindow || t.contextWindow,
       lastText: (m.result || '').slice(0, 300) || t.lastText,
-      denials: (t.denials || 0) + (m.permission_denials || []).length,
+      denials: (t.denials || 0) + rawDenials.length,
       endedAt: Date.now(),
     });
     armIdle(t);
@@ -1715,6 +1739,8 @@ function deliverOneShot(t, msg) {
   let live = '', liveThink = '', gotResult = false, rawOut = '';
   let turnUsage = { in: 0, out: 0, cr: 0, cw: 0, context: 0 };
   const tools = new Set();
+  const turnTools = new Map();
+  const turnDenials = [];
   const flush = () => {
     if (liveThink.trim()) { pushEvent(t, { k: 'thinking', text: clip(liveThink, 4000) }); liveThink = ''; }
     if (live.trim()) { pushEvent(t, { k: 'text', text: live }); updateTask(t, { lastText: live.slice(0, 300) }); }
@@ -1753,6 +1779,11 @@ function deliverOneShot(t, msg) {
         const inp = o.input_tokens || 0, cr = o.cache_read_tokens || 0, out = (o.output_tokens || 0) + (o.thinking_tokens || 0);
         turnUsage.in += inp; turnUsage.cr += cr; turnUsage.out += out;
         if (inp + cr > 0) turnUsage.context = inp + cr;
+        if (Array.isArray(o.tool_calls)) {
+          o.tool_calls.forEach((tc, idx) => {
+            if (tc && QUESTION_TOOLS.test(tc.name)) h.tool(`s${o.step_index}_${idx}`, tc.name, tc.args || tc.parameters || {});
+          });
+        }
         updated = true;
       }
       if (updated) {
@@ -1790,8 +1821,28 @@ function deliverOneShot(t, msg) {
     },
     text(x) { flush(); if (String(x).trim()) { pushEvent(t, { k: 'text', text: x }); updateTask(t, { lastText: String(x).slice(0, 300) }); } },
     thinking(x) { if (String(x).trim()) pushEvent(t, { k: 'thinking', text: clip(x, 4000) }); },
-    tool(id, name, input) { if (tools.has(id)) return; tools.add(id); flush(); pushEvent(t, { k: 'tool', id, name, input }); updateTask(t, { lastText: `🔧 ${name}`, ...progressPatch(t, name, input) }); },
-    toolResult(id, isError, out) { pushEvent(t, { k: 'tool_result', id, isError: !!isError, text: clip(String(out || '')) }); },
+    tool(id, name, input) {
+      if (tools.has(id)) return;
+      tools.add(id);
+      const brief = briefOf(name, input);
+      turnTools.set(id, { name, brief });
+      flush();
+      pushEvent(t, { k: 'tool', id, name, input });
+      updateTask(t, { lastText: `${QUESTION_TOOLS.test(name) ? '❓' : APPROVAL_TOOLS.test(name) ? '🛡' : '🔧'} ${brief || name}`, ...progressPatch(t, name, input) });
+      // In non-interactive one-shot mode, question/approval tools block waiting for TTY input; finish the turn so the UI card can collect the answer
+      if (QUESTION_TOOLS.test(name) || APPROVAL_TOOLS.test(name)) {
+        if (APPROVAL_TOOLS.test(name) && name !== 'ExitPlanMode') turnDenials.push({ name, brief });
+        setTimeout(() => { if (!gotResult) { h.result({ ok: true }); try { child.kill('SIGTERM'); } catch {} } }, 600);
+      }
+    },
+    toolResult(id, isError, out) {
+      const text = clip(String(out || ''));
+      if (isError && /Action denied|permission denied|requires approval|not allowed in plan mode|auto-denied/i.test(text)) {
+        const ti = turnTools.get(id) || { name: 'tool', brief: text.slice(0, 120) };
+        turnDenials.push(ti);
+      }
+      pushEvent(t, { k: 'tool_result', id, isError: !!isError, text });
+    },
     stderr(x) { pushEvent(t, { k: 'stderr', text: clip(String(x), 4000) }); },
     result(r) {
       flush(); pollTranscript(); gotResult = true;
@@ -1806,8 +1857,10 @@ function deliverOneShot(t, msg) {
       const duration = r.duration || Date.now() - started;
       const turnCost = r.cost || estimateCost({ in: inTok, out: outTok, cr: crTok, cw: cwTok }, modelFamily(t.model || t.activeModel || t.agent));
       const costUsd = (t.costUsd || 0) + turnCost;
-      pushEvent(t, { k: 'result', ok: r.ok, ...(r.ok ? { text: '' } : r.text ? { text: r.text } : keyedText(r.textKey || 'server.result.error', r.params)), cost: turnCost, costTotal: costUsd, duration, turns: r.turns, in: inTok, cr: crTok, out: outTok, denials: r.denials || [] });
-      updateTask(t, { status: r.ok ? 'done' : 'error', costUsd, tokens: tk, context: t.context || 0, durationMs: (t.durationMs || 0) + duration, denials: (t.denials || 0) + (r.denials || []).length, endedAt: Date.now() });
+      const denialItems = [...(r.denialItems || []), ...turnDenials];
+      const denials = [...new Set([...(r.denials || []), ...denialItems.map(d => d.name)])];
+      pushEvent(t, { k: 'result', ok: r.ok, ...(r.ok ? { text: '' } : r.text ? { text: r.text } : keyedText(r.textKey || 'server.result.error', r.params)), cost: turnCost, costTotal: costUsd, duration, turns: r.turns, in: inTok, cr: crTok, out: outTok, denials, denialItems, planMode: t.permissionMode === 'plan' });
+      updateTask(t, { status: r.ok ? 'done' : 'error', costUsd, tokens: tk, context: t.context || 0, durationMs: (t.durationMs || 0) + duration, denials: (t.denials || 0) + denials.length, endedAt: Date.now() });
       scanSessions();
     },
   };
@@ -2374,6 +2427,7 @@ const server = http.createServer(async (req, res) => {
         const b = await body(req);
         const patch = {};
         for (const k of ['permissionMode', 'model', 'effort']) if (k in b) patch[k] = b[k] || null;
+        if ('permissionMode' in b && t.denials) patch.denials = 0;
         updateTask(t, patch);
         return send(res, 200, publicTask(t));
       }
@@ -2381,6 +2435,7 @@ const server = http.createServer(async (req, res) => {
         const b = await body(req);
         if ((!b.text || !b.text.trim()) && !(b.files || []).length) return fail(400, 'server.task.emptyMessage');
         for (const k of ['permissionMode', 'model', 'effort']) if (k in b) t[k] = b[k] || null;
+        if (t.denials) t.denials = 0;
         if (t.status === 'stopping') return fail(409, 'server.task.stopping');
         sendMessage(t, { text: b.text || '', files: b.files, skill: b.skill && skillOf(b.skill, t.projectPath) ? b.skill : undefined });
         return send(res, 200, { ok: true });

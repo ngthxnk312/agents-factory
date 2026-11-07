@@ -35,6 +35,7 @@ node server.js        # hoặc chạy trực tiếp
 - Agent khác (Antigravity, Codex, Gemini, agent tuỳ ý) chạy một tiến trình cho mỗi tin nhắn, rồi nối tiếp phiên bằng ID phiên.
 - **Đổi agent** (nút ⇄ ở đầu chat): chuyển cuộc chat sang agent khác, ví dụ Claude → Antigravity. Đổi ngay trong chat đang mở, không tạo chat mới. Phiên của các CLI không chuyển qua nhau được, nên agent đích mở phiên mới và — nếu chọn mang theo context — nhận bản bàn giao: yêu cầu gốc, danh sách việc, file đã sửa, các trao đổi gần đây. Chọn "Xoá context" thì agent bắt đầu sạch; chọn chính agent đang dùng + xoá context tương đương /clear mà vẫn giữ chat.
 - Chế độ quyền: `default`, `⏵ accept edits`, `⏸ plan`, `⏵ auto`, `bypass`. Nhấn **Shift+Tab** trong ô chat để đổi vòng. Đổi model hoặc chế độ quyền ở thanh dưới được lưu ngay.
+- **Hộp thoại câu hỏi & phê duyệt tương tác:** khi agent đặt câu hỏi chọn phương án (`AskUserQuestion`, `ask_question`, hoặc câu hỏi kèm lựa chọn trong tin nhắn), bị chặn quyền thực thi lệnh/tool, hoặc trình bày xong kế hoạch (`ExitPlanMode` / `⏸ plan`), giao diện hiển thị thẻ tương tác để chọn đáp án, duyệt quyền / duyệt kế hoạch chỉ với 1 cú nhấp hoặc nhập ý kiến bổ sung.
 - Gõ `/` trong ô chat để chọn lệnh CLI, skill, plugin và lệnh của Hub (`/stop /rename /model /terminal /files /new /help`).
 - Đính kèm file bằng kéo thả, dán hoặc nút 📎.
 - Link và đường dẫn file trong câu trả lời bấm được. Đường dẫn file mở trong cột File, nhảy tới đúng dòng.

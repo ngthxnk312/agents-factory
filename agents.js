@@ -59,18 +59,20 @@ const ADAPTERS = {
           if (s.text_delta) h.delta(s.text_delta);
           if (s.thinking_delta) h.thinkingDelta(s.thinking_delta);
           if (s.state === 'DONE') h.flush();
-        } else if (s.step_type === 'tool') {
+        } else if (s.step_type === 'tool' || s.step_type === 'ask_question') {
           const info = s.tool_info || {};
-          if (s.state === 'ACTIVE') h.tool('s' + s.step_index, s.tool_name || info.name, info.parameters || {});
-          else if (s.state === 'DONE' || s.state === 'ERROR' || s.state === 'CANCELED') h.toolResult('s' + s.step_index, s.state !== 'DONE', info.output || info.result || '');
+          const tname = s.tool_name || info.name || (s.step_type === 'ask_question' ? 'ask_question' : 'tool');
+          if (s.state === 'ACTIVE' || s.step_type === 'ask_question') h.tool('s' + s.step_index, tname, info.parameters || s.parameters || s.args || {});
+          if (s.state === 'DONE' || s.state === 'ERROR' || s.state === 'CANCELED') h.toolResult('s' + s.step_index, s.state !== 'DONE', info.output || info.result || '');
         }
         if (h.pollTranscript) h.pollTranscript();
         return;
       }
       if (m.event === 'result') {
         const r = m.result || {}, u = r.usage || m.usage || {};
+        const denialItems = (r.denied_actions || []).map(d => ({ name: d.display_name || d.action || 'tool', brief: d.command || d.path || d.description || '' }));
         h.result({ ok: r.status === 'SUCCESS', text: r.error || r.response || '', in: u.input_tokens || u.total_input_tokens, out: (u.output_tokens || 0) + (u.thinking_tokens || 0), cr: u.cache_read_tokens || u.cache_read_input_tokens, cw: u.cache_creation_input_tokens,
-          duration: (r.duration_seconds || 0) * 1000, turns: r.num_turns, denials: (r.denied_actions || []).map(d => d.display_name || d.action) });
+          duration: (r.duration_seconds || 0) * 1000, turns: r.num_turns, denials: denialItems.map(d => d.name), denialItems });
       }
     },
     resumeCmd: t => (t.sessionId ? `agy --conversation ${t.sessionId}` : 'agy'),
@@ -97,6 +99,7 @@ const ADAPTERS = {
       if (m.type === 'item.started') {
         if (it.type === 'command_execution') return h.tool(it.id, 'shell', { command: it.command });
         if (it.type === 'web_search') return h.tool(it.id, 'web_search', { query: it.query });
+        if (it.type === 'request_user_input') return h.tool(it.id || 'q', 'request_user_input', { questions: it.questions || [] });
         if (it.type === 'todo_list' && Array.isArray(it.items) && h.todos) return h.todos(it.items);
       }
       if (m.type === 'item.updated' && it.type === 'todo_list' && Array.isArray(it.items) && h.todos) return h.todos(it.items);

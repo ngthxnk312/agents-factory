@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in Agents Factory does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Security problems go through [SECURITY.md](https://github.com/ngthxnk312/agents-factory/blob/main/SECURITY.md), not public issues.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a chat with …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.0.1 / 8e57638
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      multiple: true
+      options: [Claude Code, Antigravity, Codex, Gemini CLI, Custom agent, Not agent-specific]
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: Ubuntu 24.04, Node 22, Edge 142
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and screenshots
+      description: Browser console, `hub.log`, screenshots. Remove tokens and private paths first.
+      render: text

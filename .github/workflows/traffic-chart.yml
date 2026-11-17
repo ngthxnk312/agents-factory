@@ -1,0 +1,54 @@
+name: traffic-chart
+
+# Redraws the clone-traffic chart shown in the README. GitHub keeps only 14 days of traffic, so the history lives on
+# the `traffic` branch (history.json + clones.svg / clones-dark.svg), rewritten as a single commit on every run.
+# Needs a repository secret TRAFFIC_TOKEN: a token that can read this repo's traffic (classic PAT with `repo`, or a
+# fine-grained token with "Administration: read") — the built-in GITHUB_TOKEN cannot read traffic.
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: traffic-chart
+  cancel-in-progress: false
+
+jobs:
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restore history from the traffic branch
+        run: |
+          mkdir -p out
+          if git ls-remote --exit-code --heads origin traffic >/dev/null; then
+            git fetch --depth 1 origin traffic
+            git show FETCH_HEAD:history.json > out/history.json 2>/dev/null || rm -f out/history.json
+          fi
+
+      - name: Draw the chart
+        env:
+          TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: node .github/scripts/traffic-chart.mjs out
+
+      - name: Publish to the traffic branch
+        env:
+          REPO: ${{ github.repository }}
+          GH_PUSH_TOKEN: ${{ github.token }}
+        run: |
+          cd out
+          git init -q -b traffic
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add history.json clones.svg clones-dark.svg
+          git commit -q -m "chore: update clone traffic chart"
+          git push -q -f "https://x-access-token:${GH_PUSH_TOKEN}@github.com/${REPO}.git" traffic

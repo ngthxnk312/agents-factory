@@ -121,8 +121,19 @@ tail -f hub.log                           # xem log
 
 Đọc [AGENTS.md](AGENTS.md) ([tiếng Việt](AGENTS_vi.md)) trước khi sửa code. Tài liệu này mô tả kiến trúc, cách chạy thử an toàn, quy tắc bảo mật và những điều đã học được.
 
+Xem [CONTRIBUTING_vi.md](CONTRIBUTING_vi.md) để biết quy trình nhánh, commit và pull request; xem [SECURITY_vi.md](SECURITY_vi.md) để báo lỗ hổng bảo mật một cách kín đáo.
+
 ## Tác giả
 
 **ngthxnk312**
 
 [![Donate with PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/ngthxnk312)
+
+## Lượt clone
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ngthxnk312/agents-factory/traffic/clones-dark.svg">
+  <img src="https://raw.githubusercontent.com/ngthxnk312/agents-factory/traffic/clones.svg" alt="Clone traffic of agents-factory" width="820">
+</picture>
+
+Cập nhật 3 giờ một lần bởi workflow [`traffic-chart`](.github/workflows/traffic-chart.yml). GitHub chỉ giữ số liệu 14 ngày, nên lịch sử được lưu dồn trên nhánh `traffic`.

@@ -108,8 +108,19 @@ tail -f hub.log                           # logs
 
 Read [AGENTS.md](AGENTS.md) ([Vietnamese](AGENTS_vi.md)) before changing code: architecture, safe testing, security rules and lessons learned.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for branches, commits and pull requests, and [SECURITY.md](SECURITY.md) to report a vulnerability privately.
+
 ## Author
 
 **ngthxnk312**
 
 [![Donate with PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/ngthxnk312)
+
+## Clone traffic
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ngthxnk312/agents-factory/traffic/clones-dark.svg">
+  <img src="https://raw.githubusercontent.com/ngthxnk312/agents-factory/traffic/clones.svg" alt="Clone traffic of agents-factory" width="820">
+</picture>
+
+Updated every 3 hours by the [`traffic-chart`](.github/workflows/traffic-chart.yml) workflow. GitHub only keeps 14 days of traffic, so the history is kept on the `traffic` branch.

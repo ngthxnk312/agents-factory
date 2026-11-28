@@ -8,7 +8,7 @@
 
 Send work to Claude Code, Antigravity, Codex, Gemini CLI or any CLI agent across every project on your machine, then watch them run, review the results and keep going — from one browser tab.
 
-[Vietnamese (Tiếng Việt)](README_vi.md) · [PayPal Donate](https://paypal.me/ngthxnk312)
+[Vietnamese (Tiếng Việt)](README_vi.md) · [MIT License](LICENSE) · [PayPal Donate](https://paypal.me/ngthxnk312)
 
 </div>
 
@@ -115,6 +115,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for branches, commits and pull requests, 
 **ngthxnk312**
 
 [![Donate with PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/ngthxnk312)
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ## Clone traffic
 

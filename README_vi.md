@@ -8,7 +8,7 @@
 
 Giao việc cho Claude Code, Antigravity, Codex, Gemini CLI hoặc bất kỳ agent dạng CLI nào, ở mọi project trên máy. Sau đó theo dõi agent chạy, xem kết quả và làm tiếp, tất cả trong một tab trình duyệt.
 
-[English (Bản chính)](README.md) · [Ủng hộ qua PayPal](https://paypal.me/ngthxnk312)
+[English (Bản chính)](README.md) · [Giấy phép MIT](LICENSE) · [Ủng hộ qua PayPal](https://paypal.me/ngthxnk312)
 
 </div>
 
@@ -128,6 +128,10 @@ Xem [CONTRIBUTING_vi.md](CONTRIBUTING_vi.md) để biết quy trình nhánh, com
 **ngthxnk312**
 
 [![Donate with PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/ngthxnk312)
+
+## Giấy phép
+
+MIT — xem chi tiết tại [LICENSE](LICENSE).
 
 ## Lượt clone
 

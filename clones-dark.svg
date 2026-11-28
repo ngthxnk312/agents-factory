@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 388" width="860" height="388" role="img" aria-label="ngthxnk312/agents-factory: 139 clones in the last 14 days">
+<defs>
+  <linearGradient id="afLogoBg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#7c5cff"/><stop offset="0.55" stop-color="#3b82f6"/><stop offset="1" stop-color="#14b8a6"/>
+  </linearGradient>
+  <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#60b0ff"/><stop offset="1" stop-color="#3478eb"/>
+  </linearGradient>
+  <linearGradient id="peakGrad" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#b094ff"/><stop offset="1" stop-color="#7c5cff"/>
+  </linearGradient>
+  <pattern id="plotDots" width="14" height="14" patternUnits="userSpaceOnUse">
+    <circle cx="3" cy="3" r="1.15" fill="#242c44" opacity="0.7"/>
+  </pattern>
+</defs>
+<style>
+  text{font-family:ui-rounded,"SF Pro Rounded","Nunito","Fredoka","Quicksand","Segoe UI",Helvetica,Arial,sans-serif;fill:#f1f5ff}
+  .ttl{font-size:17px;font-weight:800;letter-spacing:-0.2px}
+  .repo{font-size:11.5px;font-weight:600;fill:#9ca7c4}
+  .sub{font-size:11px;font-weight:600;fill:#9ca7c4}
+  .val{font-size:23px;font-weight:800;letter-spacing:-0.4px}
+  .lbl{font-size:11.5px;font-weight:600;fill:#9ca7c4}
+  .ax{font-size:11px;font-weight:700;fill:#9ca7c4}
+  .leg{font-size:11.5px;font-weight:700;fill:#f1f5ff}
+  .pk{font-size:11.5px;font-weight:800;fill:#1b1830}
+  @keyframes puffFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.2px)}}
+  @keyframes twinkle{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.82)}}
+  .puff{animation:puffFloat 2.8s ease-in-out infinite}
+  .twinkle{transform-box:fill-box;transform-origin:center;animation:twinkle 2.4s ease-in-out infinite}
+  .twinkle2{transform-box:fill-box;transform-origin:center;animation:twinkle 2.4s ease-in-out 1.1s infinite}
+</style>
+
+<!-- Outer cartoon sticker card -->
+<rect x="10" y="10" width="844" height="372" rx="20" fill="#070a12"/>
+<rect x="4" y="4" width="844" height="372" rx="20" fill="#161b2a" stroke="#8c9bc2" stroke-width="2.5"/>
+
+<!-- Header -->
+<g transform="translate(24,16)">
+    <rect x="2.5" y="2.5" width="38" height="38" rx="11" fill="#090d18" opacity="0.22"/>
+    <rect x="0" y="0" width="38" height="38" rx="11" fill="url(#afLogoBg)" stroke="#090d18" stroke-width="2"/>
+    <g transform="translate(3,3)" shape-rendering="crispEdges">
+      <g class="puff">
+        <rect x="22" y="5" width="4" height="2" fill="#e0f2fe"/>
+        <rect x="23" y="4" width="2" height="1" fill="#ffffff"/>
+        <rect x="17" y="3" width="4" height="2" fill="#bae6fd"/>
+        <rect x="18" y="2" width="2" height="1" fill="#ffffff"/>
+      </g>
+      <rect x="8" y="4" width="2" height="4" fill="#fde047"/>
+      <rect x="7" y="5" width="4" height="2" fill="#fde047"/>
+      <rect x="8" y="5" width="2" height="2" fill="#ffffff"/>
+      <rect x="21" y="8" width="6" height="2" fill="#e0e7ff"/>
+      <rect x="22" y="10" width="4" height="2" fill="#fbbf24"/>
+      <rect x="22" y="12" width="4" height="4" fill="#ffffff"/>
+      <rect x="25" y="12" width="1" height="4" fill="#cbd5e1"/>
+      <rect x="10" y="10" width="2" height="2" fill="#ffffff"/>
+      <rect x="8" y="12" width="4" height="2" fill="#ffffff"/>
+      <rect x="6" y="14" width="6" height="2" fill="#ffffff"/>
+      <rect x="18" y="10" width="2" height="2" fill="#ffffff"/>
+      <rect x="16" y="12" width="4" height="2" fill="#ffffff"/>
+      <rect x="14" y="14" width="6" height="2" fill="#ffffff"/>
+      <rect x="5" y="16" width="22" height="11" fill="#ffffff"/>
+      <rect x="26" y="16" width="1" height="11" fill="#cbd5e1"/>
+      <rect x="4" y="27" width="24" height="2" fill="#cbd5e1"/>
+      <rect x="7" y="18" width="2" height="2" fill="#f59e0b"/>
+      <rect x="7" y="22" width="2" height="2" fill="#f59e0b"/>
+      <rect x="23" y="18" width="2" height="2" fill="#f59e0b"/>
+      <rect x="23" y="22" width="2" height="2" fill="#f59e0b"/>
+      <rect x="11" y="18" width="10" height="9" fill="#1e1b4b"/>
+      <rect x="15" y="19" width="2" height="1" fill="#fde047"/>
+      <rect x="13" y="20" width="6" height="5" fill="#2dd4bf"/>
+      <rect x="13" y="20" width="6" height="1" fill="#99f6e4"/>
+      <rect x="14" y="22" width="1" height="2" fill="#1e1b4b"/>
+      <rect x="17" y="22" width="1" height="2" fill="#1e1b4b"/>
+      <rect x="12" y="25" width="8" height="2" fill="#6d5dfc"/>
+    </g>
+  </g>
+<text x="74" y="34" class="ttl">Clone Traffic</text>
+<path class="twinkle" d="M192.0,20.8 Q193.5,24.5 197.2,26.0 Q193.5,27.5 192.0,31.2 Q190.5,27.5 186.8,26.0 Q190.5,24.5 192.0,20.8Z" fill="#fde047"/>
+<text x="74" y="51" class="repo">ngthxnk312/agents-factory</text>
+
+<!-- Updated timestamp pill -->
+<g transform="translate(618,21)">
+  <rect x="2.5" y="2.5" width="210" height="26" rx="13" fill="#090c16"/>
+  <rect x="0" y="0" width="210" height="26" rx="13" fill="#232942" stroke="#8c9bc2" stroke-width="1.6"/>
+  <circle cx="15" cy="13" r="4" fill="#34d399" stroke="#090d18" stroke-width="1.2"/>
+  <text x="26" y="17" class="sub">updated 2026-11-28 17:35 UTC</text>
+</g>
+
+<!-- KPI sticker cards -->
+<g transform="translate(24,68)">
+    <rect x="3" y="3" width="258" height="60" rx="14" fill="#090c16"/>
+    <rect x="0" y="0" width="258" height="60" rx="14" fill="#1a2740" stroke="#8c9bc2" stroke-width="2"/>
+    <circle cx="29" cy="30" r="16" fill="#60a5fa" stroke="#090d18" stroke-width="1.8"/>
+    <g transform="translate(17,18)"><rect x="4" y="7" width="11" height="11" rx="3" fill="#ffffff" stroke="#090d18" stroke-width="1.6"/><rect x="9" y="4" width="11" height="11" rx="3" fill="#dbeafe" stroke="#090d18" stroke-width="1.6"/><path d="M12.5,9.5 H16.5 M14.5,7.5 V11.5" stroke="#090d18" stroke-width="1.6" stroke-linecap="round"/></g>
+    <text x="55" y="29" class="val">139</text>
+    <text x="55" y="47" class="lbl">clones, 14d (66 unique)</text>
+  </g>
+<g transform="translate(297,68)">
+    <rect x="3" y="3" width="258" height="60" rx="14" fill="#090c16"/>
+    <rect x="0" y="0" width="258" height="60" rx="14" fill="#251f42" stroke="#8c9bc2" stroke-width="2"/>
+    <circle cx="29" cy="30" r="16" fill="#a78bfa" stroke="#090d18" stroke-width="1.8"/>
+    <g transform="translate(17,18)"><path d="M12,3.5 L14.6,8.7 L20.3,9.5 L16.1,13.5 L17.1,19.2 L12,16.5 L6.9,19.2 L7.9,13.5 L3.7,9.5 L9.4,8.7 Z" fill="#fde047" stroke="#090d18" stroke-width="1.6" stroke-linejoin="round"/></g>
+    <text x="55" y="29" class="val">201</text>
+    <text x="55" y="47" class="lbl">recorded since 03/11/2026</text>
+  </g>
+<g transform="translate(570,68)">
+    <rect x="3" y="3" width="258" height="60" rx="14" fill="#090c16"/>
+    <rect x="0" y="0" width="258" height="60" rx="14" fill="#31251b" stroke="#8c9bc2" stroke-width="2"/>
+    <circle cx="29" cy="30" r="16" fill="#fbbf24" stroke="#090d18" stroke-width="1.8"/>
+    <g transform="translate(17,18)"><path d="M3,12 Q12,4.5 21,12 Q12,19.5 3,12 Z" fill="#ffffff" stroke="#090d18" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.6" fill="#232136"/><circle cx="10.9" cy="10.8" r="1.2" fill="#ffffff"/></g>
+    <text x="55" y="29" class="val">27</text>
+    <text x="55" y="47" class="lbl">views, 14d (2 unique)</text>
+  </g>
+
+<!-- Plot container -->
+<rect x="24" y="142" width="804" height="222" rx="15" fill="#101421" stroke="#8c9bc2" stroke-width="2"/>
+<rect x="25" y="143" width="802" height="220" rx="14" fill="url(#plotDots)"/>
+
+<!-- Plot caption & legend pills -->
+<text x="40" y="165" class="ax">LAST 30 DAYS</text>
+<g transform="translate(592,151)">
+  <rect x="0" y="0" width="84" height="22" rx="11" fill="#161b2a" stroke="#8c9bc2" stroke-width="1.5"/>
+  <rect x="10" y="5" width="11" height="12" rx="3.5" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.4"/>
+  <text x="27" y="15" class="leg">Clones</text>
+  <rect x="92" y="0" width="132" height="22" rx="11" fill="#161b2a" stroke="#8c9bc2" stroke-width="1.5"/>
+  <line x1="101" y1="11" x2="119" y2="11" stroke="#ff7e47" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="110" cy="11" r="4" fill="#ff7e47" stroke="#090d18" stroke-width="1.5"/>
+  <text x="125" y="15" class="leg">Unique cloners</text>
+</g>
+
+<!-- Chart series -->
+<text x="56" y="340.0" text-anchor="end" class="ax">0</text><line x1="66" x2="812" y1="301.0" y2="301.0" stroke="#28314a" stroke-width="1.4" stroke-dasharray="4 5"/><text x="56" y="305.0" text-anchor="end" class="ax">20</text><line x1="66" x2="812" y1="266.0" y2="266.0" stroke="#28314a" stroke-width="1.4" stroke-dasharray="4 5"/><text x="56" y="270.0" text-anchor="end" class="ax">40</text><line x1="66" x2="812" y1="231.0" y2="231.0" stroke="#28314a" stroke-width="1.4" stroke-dasharray="4 5"/><text x="56" y="235.0" text-anchor="end" class="ax">60</text><line x1="66" x2="812" y1="196.0" y2="196.0" stroke="#28314a" stroke-width="1.4" stroke-dasharray="4 5"/><text x="56" y="200.0" text-anchor="end" class="ax">80</text>
+<path d="M172.7,336.0V336.3Q172.7,334.3 174.7,334.3H186.7Q188.7,334.3 188.7,336.3V336.0Z" fill="#090c16"/><path d="M197.6,336.0V336.3Q197.6,334.3 199.6,334.3H211.5Q213.5,334.3 213.5,336.3V336.0Z" fill="#090c16"/><path d="M222.5,336.0V336.3Q222.5,334.3 224.5,334.3H236.4Q238.4,334.3 238.4,336.3V336.0Z" fill="#090c16"/><path d="M272.2,336.0V277.3Q272.2,271.3 278.2,271.3H282.1Q288.1,271.3 288.1,277.3V336.0Z" fill="#090c16"/><path d="M297.1,336.0V336.3Q297.1,334.3 299.1,334.3H311.0Q313.0,334.3 313.0,336.3V336.0Z" fill="#090c16"/><path d="M321.9,336.0V326.3Q321.9,320.3 327.9,320.3H331.9Q337.9,320.3 337.9,326.3V336.0Z" fill="#090c16"/><path d="M371.7,336.0V334.5Q371.7,332.5 373.7,332.5H385.6Q387.6,332.5 387.6,334.5V336.0Z" fill="#090c16"/><path d="M396.5,336.0V332.5Q396.5,329.0 400.0,329.0H409.0Q412.5,329.0 412.5,332.5V336.0Z" fill="#090c16"/><path d="M421.4,336.0V330.8Q421.4,325.5 426.7,325.5H432.1Q437.3,325.5 437.3,330.8V336.0Z" fill="#090c16"/><path d="M446.3,336.0V333.4Q446.3,330.8 448.9,330.8H459.6Q462.2,330.8 462.2,333.4V336.0Z" fill="#090c16"/><path d="M471.1,336.0V334.5Q471.1,332.5 473.1,332.5H485.1Q487.1,332.5 487.1,334.5V336.0Z" fill="#090c16"/><path d="M496.0,336.0V336.3Q496.0,334.3 498.0,334.3H509.9Q511.9,334.3 511.9,336.3V336.0Z" fill="#090c16"/><path d="M520.9,336.0V321.0Q520.9,315.0 526.9,315.0H530.8Q536.8,315.0 536.8,321.0V336.0Z" fill="#090c16"/><path d="M545.7,336.0V329.8Q545.7,323.8 551.7,323.8H555.7Q561.7,323.8 561.7,329.8V336.0Z" fill="#090c16"/><path d="M570.6,336.0V336.3Q570.6,334.3 572.6,334.3H584.5Q586.5,334.3 586.5,336.3V336.0Z" fill="#090c16"/><path d="M620.3,336.0V333.4Q620.3,330.8 623.0,330.8H633.6Q636.3,330.8 636.3,333.4V336.0Z" fill="#090c16"/><path d="M670.1,336.0V268.5Q670.1,262.5 676.1,262.5H680.0Q686.0,262.5 686.0,268.5V336.0Z" fill="#090c16"/><path d="M694.9,336.0V310.5Q694.9,304.5 700.9,304.5H704.9Q710.9,304.5 710.9,310.5V336.0Z" fill="#090c16"/><path d="M719.8,336.0V314.0Q719.8,308.0 725.8,308.0H729.7Q735.7,308.0 735.7,314.0V336.0Z" fill="#090c16"/><path d="M744.7,336.0V305.3Q744.7,299.3 750.7,299.3H754.6Q760.6,299.3 760.6,305.3V336.0Z" fill="#090c16"/><path d="M769.5,336.0V319.3Q769.5,313.3 775.5,313.3H779.5Q785.5,313.3 785.5,319.3V336.0Z" fill="#090c16"/>
+<g><path d="M169.9,336.0V336.3Q169.9,334.3 171.9,334.3H183.9Q185.9,334.3 185.9,336.3V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>03/11: 1 clones, 1 unique</title></path></g><g><path d="M194.8,336.0V336.3Q194.8,334.3 196.8,334.3H208.7Q210.7,334.3 210.7,336.3V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>04/11: 1 clones, 1 unique</title></path></g><g><path d="M219.7,336.0V336.3Q219.7,334.3 221.7,334.3H233.6Q235.6,334.3 235.6,336.3V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>05/11: 1 clones, 1 unique</title></path></g><g><path d="M269.4,336.0V277.3Q269.4,271.3 275.4,271.3H279.3Q285.3,271.3 285.3,277.3V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>07/11: 37 clones, 14 unique</title></path><rect x="272.6" y="274.8" width="3.2" height="18.0" rx="1.6" fill="#ffffff" opacity="0.42"/></g><g><path d="M294.3,336.0V336.3Q294.3,334.3 296.3,334.3H308.2Q310.2,334.3 310.2,336.3V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>08/11: 1 clones, 1 unique</title></path></g><g><path d="M319.1,336.0V326.3Q319.1,320.3 325.1,320.3H329.1Q335.1,320.3 335.1,326.3V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>09/11: 9 clones, 5 unique</title></path><rect x="322.3" y="323.8" width="3.2" height="7.8" rx="1.6" fill="#ffffff" opacity="0.42"/></g><g><path d="M368.9,336.0V334.5Q368.9,332.5 370.9,332.5H382.8Q384.8,332.5 384.8,334.5V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>11/11: 2 clones, 2 unique</title></path></g><g><path d="M393.7,336.0V332.5Q393.7,329.0 397.2,329.0H406.2Q409.7,329.0 409.7,332.5V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>12/11: 4 clones, 3 unique</title></path></g><g><path d="M418.6,336.0V330.8Q418.6,325.5 423.9,325.5H429.3Q434.5,325.5 434.5,330.8V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>13/11: 6 clones, 6 unique</title></path></g><g><path d="M443.5,336.0V333.4Q443.5,330.8 446.1,330.8H456.8Q459.4,330.8 459.4,333.4V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>14/11: 3 clones, 3 unique</title></path></g><g><path d="M468.3,336.0V334.5Q468.3,332.5 470.3,332.5H482.3Q484.3,332.5 484.3,334.5V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>15/11: 2 clones, 1 unique</title></path></g><g><path d="M493.2,336.0V336.3Q493.2,334.3 495.2,334.3H507.1Q509.1,334.3 509.1,336.3V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>16/11: 1 clones, 1 unique</title></path></g><g><path d="M518.1,336.0V321.0Q518.1,315.0 524.1,315.0H528.0Q534.0,315.0 534.0,321.0V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>17/11: 12 clones, 4 unique</title></path><rect x="521.3" y="318.5" width="3.2" height="13.0" rx="1.6" fill="#ffffff" opacity="0.42"/></g><g><path d="M542.9,336.0V329.8Q542.9,323.8 548.9,323.8H552.9Q558.9,323.8 558.9,329.8V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>18/11: 7 clones, 7 unique</title></path></g><g><path d="M567.8,336.0V336.3Q567.8,334.3 569.8,334.3H581.7Q583.7,334.3 583.7,336.3V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>19/11: 1 clones, 1 unique</title></path></g><g><path d="M617.5,336.0V333.4Q617.5,330.8 620.2,330.8H630.8Q633.5,330.8 633.5,333.4V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>21/11: 3 clones, 3 unique</title></path></g><g><path d="M667.3,336.0V268.5Q667.3,262.5 673.3,262.5H677.2Q683.2,262.5 683.2,268.5V336.0Z" fill="url(#peakGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>23/11: 42 clones, 22 unique</title></path><rect x="670.5" y="266.0" width="3.2" height="18.0" rx="1.6" fill="#ffffff" opacity="0.42"/></g><g><path d="M692.1,336.0V310.5Q692.1,304.5 698.1,304.5H702.1Q708.1,304.5 708.1,310.5V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>24/11: 18 clones, 9 unique</title></path><rect x="695.3" y="308.0" width="3.2" height="18.0" rx="1.6" fill="#ffffff" opacity="0.42"/></g><g><path d="M717.0,336.0V314.0Q717.0,308.0 723.0,308.0H726.9Q732.9,308.0 732.9,314.0V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>25/11: 16 clones, 9 unique</title></path><rect x="720.2" y="311.5" width="3.2" height="18.0" rx="1.6" fill="#ffffff" opacity="0.42"/></g><g><path d="M741.9,336.0V305.3Q741.9,299.3 747.9,299.3H751.8Q757.8,299.3 757.8,305.3V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>26/11: 21 clones, 10 unique</title></path><rect x="745.1" y="302.8" width="3.2" height="18.0" rx="1.6" fill="#ffffff" opacity="0.42"/></g><g><path d="M766.7,336.0V319.3Q766.7,313.3 772.7,313.3H776.7Q782.7,313.3 782.7,319.3V336.0Z" fill="url(#barGrad)" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"><title>27/11: 13 clones, 7 unique</title></path><rect x="769.9" y="316.8" width="3.2" height="14.8" rx="1.6" fill="#ffffff" opacity="0.42"/></g>
+<line x1="62" x2="816" y1="336.0" y2="336.0" stroke="#8c9bc2" stroke-width="2.2" stroke-linecap="round"/>
+<path d="M177.9,334.3 C186.2,334.3 194.5,334.3 202.8,334.3 C211.1,334.3 219.3,334.0 227.6,334.3 C235.9,334.5 244.2,336.0 252.5,336.0 C260.8,332.2 269.1,311.8 277.4,311.5 C285.7,311.2 293.9,331.6 302.2,334.3 C310.5,336.0 318.8,327.0 327.1,327.3 C335.4,327.5 343.7,335.1 352.0,336.0 C360.3,336.0 368.5,333.4 376.8,332.5 C385.1,331.6 393.4,331.9 401.7,330.8 C410.0,329.6 418.3,325.5 426.6,325.5 C434.9,325.5 443.1,329.3 451.4,330.8 C459.7,332.2 468.0,333.7 476.3,334.3 C484.6,334.8 492.9,335.1 501.2,334.3 C509.5,333.4 517.7,330.8 526.0,329.0 C534.3,327.3 542.6,322.9 550.9,323.8 C559.2,324.6 567.5,332.2 575.8,334.3 C584.1,336.0 592.3,336.0 600.6,336.0 C608.9,335.4 617.2,330.8 625.5,330.8 C633.8,330.8 642.1,336.0 650.4,336.0 C658.7,330.5 666.9,300.1 675.2,297.5 C683.5,294.9 691.8,316.5 700.1,320.3 C708.4,324.0 716.7,320.5 725.0,320.3 C733.3,320.0 741.5,317.9 749.8,318.5 C758.1,319.1 766.4,320.8 774.7,323.8 C783.0,326.7 791.3,334.0 799.6,336.0" fill="none" stroke="#101421" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/><path d="M177.9,334.3 C186.2,334.3 194.5,334.3 202.8,334.3 C211.1,334.3 219.3,334.0 227.6,334.3 C235.9,334.5 244.2,336.0 252.5,336.0 C260.8,332.2 269.1,311.8 277.4,311.5 C285.7,311.2 293.9,331.6 302.2,334.3 C310.5,336.0 318.8,327.0 327.1,327.3 C335.4,327.5 343.7,335.1 352.0,336.0 C360.3,336.0 368.5,333.4 376.8,332.5 C385.1,331.6 393.4,331.9 401.7,330.8 C410.0,329.6 418.3,325.5 426.6,325.5 C434.9,325.5 443.1,329.3 451.4,330.8 C459.7,332.2 468.0,333.7 476.3,334.3 C484.6,334.8 492.9,335.1 501.2,334.3 C509.5,333.4 517.7,330.8 526.0,329.0 C534.3,327.3 542.6,322.9 550.9,323.8 C559.2,324.6 567.5,332.2 575.8,334.3 C584.1,336.0 592.3,336.0 600.6,336.0 C608.9,335.4 617.2,330.8 625.5,330.8 C633.8,330.8 642.1,336.0 650.4,336.0 C658.7,330.5 666.9,300.1 675.2,297.5 C683.5,294.9 691.8,316.5 700.1,320.3 C708.4,324.0 716.7,320.5 725.0,320.3 C733.3,320.0 741.5,317.9 749.8,318.5 C758.1,319.1 766.4,320.8 774.7,323.8 C783.0,326.7 791.3,334.0 799.6,336.0" fill="none" stroke="#ff7e47" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<g><circle cx="177.9" cy="334.3" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>03/11: 1 unique cloners</title></circle><circle cx="176.5" cy="332.9" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="202.8" cy="334.3" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>04/11: 1 unique cloners</title></circle><circle cx="201.4" cy="332.9" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="227.6" cy="334.3" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>05/11: 1 unique cloners</title></circle><circle cx="226.2" cy="332.9" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="277.4" cy="311.5" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>07/11: 14 unique cloners</title></circle><circle cx="276.0" cy="310.1" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="302.2" cy="334.3" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>08/11: 1 unique cloners</title></circle><circle cx="300.8" cy="332.9" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="327.1" cy="327.3" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>09/11: 5 unique cloners</title></circle><circle cx="325.7" cy="325.9" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="376.8" cy="332.5" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>11/11: 2 unique cloners</title></circle><circle cx="375.4" cy="331.1" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="401.7" cy="330.8" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>12/11: 3 unique cloners</title></circle><circle cx="400.3" cy="329.4" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="426.6" cy="325.5" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>13/11: 6 unique cloners</title></circle><circle cx="425.2" cy="324.1" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="451.4" cy="330.8" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>14/11: 3 unique cloners</title></circle><circle cx="450.0" cy="329.4" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="476.3" cy="334.3" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>15/11: 1 unique cloners</title></circle><circle cx="474.9" cy="332.9" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="501.2" cy="334.3" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>16/11: 1 unique cloners</title></circle><circle cx="499.8" cy="332.9" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="526.0" cy="329.0" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>17/11: 4 unique cloners</title></circle><circle cx="524.6" cy="327.6" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="550.9" cy="323.8" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>18/11: 7 unique cloners</title></circle><circle cx="549.5" cy="322.4" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="575.8" cy="334.3" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>19/11: 1 unique cloners</title></circle><circle cx="574.4" cy="332.9" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="625.5" cy="330.8" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>21/11: 3 unique cloners</title></circle><circle cx="624.1" cy="329.4" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="675.2" cy="297.5" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>23/11: 22 unique cloners</title></circle><circle cx="673.8" cy="296.1" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="700.1" cy="320.3" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>24/11: 9 unique cloners</title></circle><circle cx="698.7" cy="318.9" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="725.0" cy="320.3" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>25/11: 9 unique cloners</title></circle><circle cx="723.6" cy="318.9" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="749.8" cy="318.5" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>26/11: 10 unique cloners</title></circle><circle cx="748.4" cy="317.1" r="1.4" fill="#ffffff" opacity="0.88"/></g><g><circle cx="774.7" cy="323.8" r="4.6" fill="#ff7e47" stroke="#090d18" stroke-width="1.8"><title>27/11: 7 unique cloners</title></circle><circle cx="773.3" cy="322.4" r="1.4" fill="#ffffff" opacity="0.88"/></g>
+<g class="peak-pop">
+      <rect x="653.4" y="232.0" width="48" height="22" rx="11" fill="#090d18" opacity="0.28"/>
+      <path d="M670.2,250.5 L675.2,257.5 L680.2,250.5 Z" fill="#fbbf24" stroke="#090d18" stroke-width="1.8" stroke-linejoin="round"/>
+      <rect x="651.2" y="229.5" width="48" height="22" rx="11" fill="#fbbf24" stroke="#090d18" stroke-width="1.8"/>
+      <path d="M671.6,250.0 H678.8" stroke="#fbbf24" stroke-width="2.4"/>
+      <text x="675.2" y="244.5" text-anchor="middle" class="pk">★ 42</text>
+      <path class="twinkle" d="M643.2,228.9 Q644.5,232.2 647.8,233.5 Q644.5,234.8 643.2,238.1 Q641.9,234.8 638.6,233.5 Q641.9,232.2 643.2,228.9Z" fill="#fde047"/>
+      <path class="twinkle2" d="M707.2,228.7 Q708.3,231.4 711.0,232.5 Q708.3,233.6 707.2,236.3 Q706.2,233.6 703.4,232.5 Q706.2,231.4 707.2,228.7Z" fill="#fde047"/>
+    </g>
+<line x1="177.9" x2="177.9" y1="336.0" y2="340.0" stroke="#8c9bc2" stroke-width="1.6" stroke-linecap="round"/><text x="177.9" y="354.0" text-anchor="middle" class="ax">03/11</text><line x1="302.2" x2="302.2" y1="336.0" y2="340.0" stroke="#8c9bc2" stroke-width="1.6" stroke-linecap="round"/><text x="302.2" y="354.0" text-anchor="middle" class="ax">08/11</text><line x1="426.6" x2="426.6" y1="336.0" y2="340.0" stroke="#8c9bc2" stroke-width="1.6" stroke-linecap="round"/><text x="426.6" y="354.0" text-anchor="middle" class="ax">13/11</text><line x1="550.9" x2="550.9" y1="336.0" y2="340.0" stroke="#8c9bc2" stroke-width="1.6" stroke-linecap="round"/><text x="550.9" y="354.0" text-anchor="middle" class="ax">18/11</text><line x1="675.2" x2="675.2" y1="336.0" y2="340.0" stroke="#8c9bc2" stroke-width="1.6" stroke-linecap="round"/><text x="675.2" y="354.0" text-anchor="middle" class="ax">23/11</text><line x1="799.6" x2="799.6" y1="336.0" y2="340.0" stroke="#8c9bc2" stroke-width="1.6" stroke-linecap="round"/><text x="799.6" y="354.0" text-anchor="middle" class="ax">28/11</text>
+</svg>
